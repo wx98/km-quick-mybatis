@@ -33,19 +33,41 @@ repositories {
 dependencies {
     testImplementation(libs.junit)
 
+    //    implementation(libs.annotations)
+
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
+        // 读取 ideaLocalPath 属性
+        val localPath = providers.gradleProperty("ideaLocalPath").orElse("").get()
+        if (localPath.isNotEmpty()) {
+            // 本地路径不为空,使用本地路径下的平台调试
+            local(localPath)
+        } else {
+            // 使用远程版本调试， 需要指定 platformType 和 platformVersion
+            val platformType = providers.gradleProperty("platformType").get()
+            val platformVersion = providers.gradleProperty("platformVersion").get()
+            if (platformType.isNotEmpty() && platformVersion.isNotEmpty()) {
+                // 使用远程 版本
+                create(platformType, platformVersion)
+            } else {
+                // 都没有，报异常
+                throw GradleException("必须指定 ideaLocalPath 或同时指定 platformType 和 platformVersion")
+            }
+        }
 
-        // Plugin Dependencies. Uses `platformBundledPlugins` property from the gradle.properties file for bundled IntelliJ Platform plugins.
+        // 插件依赖项。对于捆绑的 IntelliJ Platform 插件，使用 gradle.properties 文件中的 'platformBundledPlugins' 属性。
         bundledPlugins(providers.gradleProperty("platformBundledPlugins").map { it.split(',') })
 
-        // Plugin Dependencies. Uses `platformPlugins` property from the gradle.properties file for plugin from JetBrains Marketplace.
+        // 插件依赖项。对于 JetBrains Marketplace 插件，使用 gradle.properties 文件中的 'platformPlugins' 属性。
         plugins(providers.gradleProperty("platformPlugins").map { it.split(',') })
 
+        // Instrumentation 工具
         instrumentationTools()
+        // 插件调试工具
         pluginVerifier()
+        // 签名工具
         zipSigner()
+        // 测试框架
         testFramework(TestFrameworkType.Platform)
     }
 }
@@ -98,7 +120,8 @@ intellijPlatform {
         // The pluginVersion is based on the SemVer (https://semver.org) and supports pre-release labels, like 2.1.7-alpha.3
         // Specify pre-release label to publish the plugin in a custom Release Channel automatically. Read more:
         // https://plugins.jetbrains.com/docs/intellij/deployment.html#specifying-a-release-channel
-        channels = providers.gradleProperty("pluginVersion").map { listOf(it.substringAfter('-', "").substringBefore('.').ifEmpty { "default" }) }
+        channels = providers.gradleProperty("pluginVersion")
+            .map { listOf(it.substringAfter('-', "").substringBefore('.').ifEmpty { "default" }) }
     }
 
     pluginVerification {

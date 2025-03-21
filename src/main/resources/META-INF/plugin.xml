@@ -1,18 +1,24 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
-    <id>com.github.wx98.kmquickmybatis</id>
-    <name>km-quick-mybatis</name>
+    <!-- 插件id -->
+    <id>com.github.wx98.kmerit.jetbrains.plugins.quickmybatis</id>
+    <!-- 插件名称 -->
+    <name>Km-Quick-Mybatis</name>
+    <!-- 作者 -->
     <vendor>wx98</vendor>
-
+    <!-- 依赖 -->
     <depends>com.intellij.modules.platform</depends>
-
+    <!-- 资源包 -->
     <resource-bundle>messages.MyBundle</resource-bundle>
-
+    <!-- 扩展点 -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.wx98.kmquickmybatis.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
+        <toolWindow factoryClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.toolWindow.MyToolWindowFactory"
+                    id="MyToolWindow"/>
     </extensions>
-
+    <!-- 监听器 -->
     <applicationListeners>
-        <listener class="com.github.wx98.kmquickmybatis.listeners.MyApplicationActivationListener" topic="com.intellij.openapi.application.ApplicationActivationListener"/>
+        <listener
+                class="cn.wx1998.kmerit.intellij.plugins.quickmybatis.listeners.MyApplicationActivationListener"
+                topic="com.intellij.openapi.application.ApplicationActivationListener"/>
     </applicationListeners>
 </idea-plugin>
