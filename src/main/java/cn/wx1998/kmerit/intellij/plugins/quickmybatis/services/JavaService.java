@@ -2,18 +2,16 @@ package cn.wx1998.kmerit.intellij.plugins.quickmybatis.services;
 
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.dom.Mapper;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginSettings;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.DomUtils;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
-import com.intellij.psi.search.searches.ClassInheritorsSearch;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.ui.classFilter.ClassFilter;
-import com.intellij.util.CommonProcessors;
 import com.intellij.util.Processor;
-import com.intellij.util.Query;
-import com.intellij.util.xml.*;
+import com.intellij.util.xml.DomElement;
+import com.intellij.util.xml.DomFileElement;
+import com.intellij.util.xml.DomService;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.Serial;
@@ -27,9 +25,6 @@ import java.util.*;
  */
 public class JavaService implements Serializable {
 
-    // 获取日志记录器实例
-    private static final Logger LOG = Logger.getInstance(JavaService.class);
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -37,8 +32,15 @@ public class JavaService implements Serializable {
 
     private final JavaPsiFacade javaPsiFacade;
 
+    private final EditorService editorService;
+
+
     public JavaPsiFacade getJavaPsiFacade() {
         return javaPsiFacade;
+    }
+
+    public EditorService getEditorService() {
+        return editorService;
     }
 
     public Project getProject() {
@@ -53,6 +55,7 @@ public class JavaService implements Serializable {
     public JavaService(Project project) {
         this.project = project;
         this.javaPsiFacade = JavaPsiFacade.getInstance(project);
+        this.editorService = EditorService.getInstance(project);
     }
 
     /**
@@ -66,128 +69,19 @@ public class JavaService implements Serializable {
     }
 
     /**
-     * 处理类跳转逻辑
+     * Gets reference clazz of psi field.
      *
-     * @param psiClass
-     * @param processor
+     * @param field the field
+     * @return the reference clazz of psi field
      */
-    public void processClass(PsiClass psiClass, CommonProcessors.CollectProcessor<DomElement> processor) {
-        LOG.debug("1:\t" + psiClass.getText().replaceAll("\n", ""));
-        String ns = psiClass.getQualifiedName();
-        for (Mapper mapper : DomUtils.findDomElements(project, Mapper.class)) {
-            final String namespace = mapper.getNamespace().getStringValue();
-            if (namespace != null && (namespace.equals(ns) || namespace.equals(ns + "Mapper"))) {
-                processor.process(mapper);
-            }
+    public Optional<PsiClass> getReferenceClazzOfPsiField(@NotNull PsiElement field) {
+        if (!(field instanceof PsiField)) {
+            return Optional.empty();
         }
+        PsiType type = ((PsiField) field).getType();
+        return type instanceof PsiClassReferenceType ? Optional.ofNullable(((PsiClassReferenceType) type).resolve()) : Optional.empty();
     }
 
-    /**
-     * 处理方法跳转逻辑
-     *
-     * @param psiMethod
-     * @param processor
-     */
-    public void processMethod(PsiMethod psiMethod, CommonProcessors.CollectProcessor<DomElement> processor) {
-        LOG.debug("2:\t" + psiMethod.getText().replaceAll("\n", ""));
-
-        PsiClass psiClass = psiMethod.getContainingClass();
-        if (null == psiClass) {
-            return;
-        }
-        Collection<Mapper> mappers = DomUtils.findDomElements(project, Mapper.class);
-        Set<String> ids = new HashSet<>();
-        String id = psiClass.getQualifiedName() + "." + psiMethod.getName();
-        ids.add(id);
-        final Query<PsiClass> search = ClassInheritorsSearch.search(psiClass);
-        final Collection<PsiClass> allChildren = search.findAll();
-
-        for (PsiClass psiElement : allChildren) {
-            String childId = psiElement.getQualifiedName() + "." + psiMethod.getName();
-            ids.add(childId);
-        }
-        mappers.stream()
-                .flatMap(mapper -> mapper.getDaoElements().stream()).
-                filter(idDom -> {
-                    Optional<Mapper> optional = Optional.ofNullable(DomUtil.getParentOfType(idDom, Mapper.class, true));
-                    String namespace = "";
-                    if (optional.isPresent()) {
-                        namespace = optional.get().getNamespace().getStringValue();
-                    }
-                    String idSignature = (namespace +"." + idDom.getId());
-                    return ids.contains(idSignature);
-                })
-                .forEach(processor::process);
-    }
-
-    /**
-     * 处理字段跳转逻辑
-     *
-     * @param field
-     * @param processor
-     */
-    public void processField(@NotNull PsiField field, @NotNull Processor<Mapper> processor) {
-        LOG.debug("3:\t" + field.getText().replaceAll("\n", ""));
-        if (!isType(field)) {
-            return;
-        }
-        PsiExpression initializer = field.getInitializer();
-        if (initializer != null) {
-            String fieldValue = parseExpression(initializer);
-            for (Mapper mapper : DomUtils.findDomElements(field.getProject(), Mapper.class)) {
-                final var stringValue = mapper.getNamespace().getStringValue();
-                if (stringValue != null && (stringValue.equals(fieldValue) || stringValue.equals(fieldValue + "Mapper"))) {
-                    processor.process(mapper);
-                }
-            }
-        }
-
-    }
-
-    /**
-     * 处理方法调用跳转逻辑
-     *
-     * @param methodCall
-     * @param processor
-     */
-    public void processMethodCall(@NotNull PsiMethodCallExpression methodCall, @NotNull Processor<DomElement> processor) {
-        LOG.debug("4:\t" + methodCall.getText().replaceAll("\n", ""));
-        PsiMethod method = methodCall.resolveMethod();
-        if (method == null || !isSqlSessionMethod(method)) {
-            return;
-        }
-        PsiClass psiClass = method.getContainingClass();
-        PsiExpression[] args = methodCall.getArgumentList().getExpressions();
-        if (args.length != 0) {
-            // 解析第一个参数的实际值
-            String mappedStatementId = parseExpression(args[0]);
-            Set<String> ids = new HashSet<>();
-            ids.add(mappedStatementId);
-            Collection<Mapper> mappers = DomUtils.findDomElements(methodCall.getProject(), Mapper.class);
-            mappers.stream()
-                    .flatMap(mapper -> mapper.getDaoElements().stream()).
-                    filter(
-                            idDom -> {
-                                Optional<Mapper> optional = Optional.ofNullable(DomUtil.getParentOfType(idDom, Mapper.class, true));
-                                String namespace = "";
-                                if (optional.isPresent()) {
-                                    namespace = optional.get().getNamespace().getStringValue();
-                                }
-                                String idSignature = (namespace +"." + idDom.getId());
-                                return ids.contains(idSignature);
-                            }
-                    )
-                    .forEach(processor::process);
-        }
-
-    }
-
-    /**
-     * 计算表达式的值
-     *
-     * @param expression
-     * @return
-     */
     public static String parseExpression(PsiExpression expression) {
         if (expression instanceof PsiLiteralExpression) {
             // 直接返回字面量值
@@ -197,8 +91,9 @@ public class JavaService implements Serializable {
             Deque<String> parts = new ArrayDeque<>();
             flattenBinaryExpression((PsiBinaryExpression) expression, parts);
             return String.join("", parts);
-        } else if (expression instanceof PsiMethodCallExpression methodCall) {
+        } else if (expression instanceof PsiMethodCallExpression) {
             // 处理方法调用表达式
+            PsiMethodCallExpression methodCall = (PsiMethodCallExpression) expression;
             PsiReferenceExpression methodExpression = methodCall.getMethodExpression();
             String methodName = methodExpression.getReferenceName();
             if ("getName".equals(methodName)) {
@@ -218,22 +113,25 @@ public class JavaService implements Serializable {
         } else if (expression instanceof PsiReferenceExpression) {
             // 处理变量引用
             PsiElement resolved = ((PsiReferenceExpression) expression).resolve();
-            if (resolved instanceof PsiField field) {
+            if (resolved instanceof PsiField) {
+                PsiField field = (PsiField) resolved;
                 PsiExpression initializer = field.getInitializer();
                 if (initializer != null) {
                     return parseExpression(initializer);
                 }
-            } else if (resolved instanceof PsiLocalVariable localVar) {
+            } else if (resolved instanceof PsiLocalVariable) {
+                PsiLocalVariable localVar = (PsiLocalVariable) resolved;
                 PsiExpression initializer = localVar.getInitializer();
                 if (initializer != null) {
                     return parseExpression(initializer);
                 }
                 // 处理直接使用变量名作为字符串值的场景
-                if (localVar.getType() instanceof PsiClassReferenceType && String.class.getName().equals(localVar.getType().getCanonicalText())) {
+                if (localVar.getType() instanceof PsiClassReferenceType && String.class.getName().equals(((PsiClassReferenceType) localVar.getType()).getCanonicalText())) {
                     return localVar.getName();
                 }
             }
-        } else if (expression instanceof PsiPolyadicExpression polyadicExpression) {
+        } else if (expression instanceof PsiPolyadicExpression) {
+            PsiPolyadicExpression polyadicExpression = (PsiPolyadicExpression) expression;
             StringBuilder result = new StringBuilder();
             for (PsiExpression operand : polyadicExpression.getOperands()) {
                 result.append(parseExpression(operand));
@@ -243,12 +141,6 @@ public class JavaService implements Serializable {
         return "";
     }
 
-    /**
-     * 处理二元表达式
-     *
-     * @param exp
-     * @param parts
-     */
     private static void flattenBinaryExpression(PsiBinaryExpression exp, Deque<String> parts) {
         PsiExpression lOperand = exp.getLOperand();
         PsiExpression rOperand = exp.getROperand();
@@ -266,19 +158,13 @@ public class JavaService implements Serializable {
         }
     }
 
-    /**
-     * 判断字段是否是指定类型的字段l
-     *
-     * @param type
-     * @return
-     */
-    private boolean isType(PsiField type) {
+    private boolean isType(PsiField type, Class<String> targetClass) {
         if (!(type.getType() instanceof PsiClassReferenceType)) {
             return false;
         }
         // 获取泛型擦除后的原始类型
         PsiClass psiClass = ((PsiClassReferenceType) type.getType()).rawType().resolve();
-        return psiClass != null && String.class.getName().equals(psiClass.getQualifiedName());
+        return psiClass != null && targetClass.getName().equals(psiClass.getQualifiedName());
     }
 
     /**
@@ -307,4 +193,39 @@ public class JavaService implements Serializable {
         }
         return false;
     }
+
+
+    public void processField(@NotNull PsiField field, @NotNull Processor<Mapper> processor) {
+        if (!isType(field, String.class)) {
+            return;
+        }
+        PsiExpression initializer = field.getInitializer();
+        if (initializer != null) {
+            String fieldValue = parseExpression(initializer);
+            // 定义全局搜索范围
+            GlobalSearchScope scope = GlobalSearchScope.allScope(field.getProject());
+            // 获取指定类类型的 DOM 文件元素
+            List<DomFileElement<Mapper>> elements = DomService.getInstance().getFileElements(Mapper.class, field.getProject(), scope);
+            // 将文件元素转换为根元素并收集到列表中
+            final var collect = elements.stream().map(DomFileElement::getRootElement).toList();
+
+            for (Mapper mapper : collect) {
+                final var namespace = mapper.getNamespace().getRawText();
+                if (fieldValue.equals(namespace) || fieldValue.equals(namespace + "Mapper")) {
+                    processor.process(mapper);
+                }
+
+            }
+        }
+    }
+
+    public void processMethodCall(@NotNull PsiMethodCallExpression methodCall, @NotNull Processor<DomElement> processor) {
+        // 检查是否属于org.apache.ibatis.session包的方法
+        PsiMethod method = methodCall.resolveMethod();
+        final var sqlSessionMethod = isSqlSessionMethod(method);
+        System.out.println(sqlSessionMethod);
+
+    }
+
+
 }

@@ -1,6 +1,7 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting;
 
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.ui.MybatisClassFilterEditor;
+import com.intellij.debugger.ui.PatternFilterEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.wm.IdeFrame;

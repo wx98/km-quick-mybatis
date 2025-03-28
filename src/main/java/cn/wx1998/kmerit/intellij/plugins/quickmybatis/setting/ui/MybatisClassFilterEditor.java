@@ -33,10 +33,15 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
         super(project);
         ToolbarDecorator decorator = ToolbarDecorator.createDecorator(this.myTable);
         decorator.addExtraAction(new AddClassFilterAction());
-        this.add(decorator.setRemoveAction(button -> TableUtil.removeSelectedItems(myTable)).setButtonComparator(
+        this.add(decorator.setRemoveAction(new AnActionButtonRunnable() {
+            public void run(AnActionButton button) {
+                TableUtil.removeSelectedItems(myTable);
+            }
+        }).setButtonComparator(new String[]{
                 this.getAddButtonText(),
                 this.getAddPatternButtonText(),
-                CommonBundle.message("button.remove", new Object[0])).disableUpDownActions().createPanel(), "Center");
+                CommonBundle.message("button.remove", new Object[0])}
+        ).disableUpDownActions().createPanel(), "Center");
     }
 
     @Override
@@ -51,7 +56,7 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
 
     @Override
     protected Icon getAddButtonIcon() {
-        return IconManager.getInstance().getIcon(Icons.IMAGES_ADD_LIST_SVG, MybatisClassFilterEditor.class);
+        return IconManager.getInstance().getIcon(Icons.IMAGES_ADD_SVG, MybatisClassFilterEditor.class);
     }
 
     private class AddClassFilterAction extends DumbAwareAction {
@@ -115,7 +120,12 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
                 myTable.getSelectionModel().setSelectionInterval(row, row);
                 myTable.scrollRectToVisible(myTable.getCellRect(row, 0, true));
                 IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(
-                        () -> IdeFocusManager.getGlobalInstance().requestFocus(myTable, true)
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                IdeFocusManager.getGlobalInstance().requestFocus(myTable, true);
+                            }
+                        }
                 );
             }
         }
