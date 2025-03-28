@@ -1,8 +1,10 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.listeners;
 
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginSettings;
 import com.intellij.openapi.application.ApplicationActivationListener;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.wm.IdeFrame;
+import com.intellij.ui.classFilter.ClassFilter;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -21,8 +23,11 @@ public class MyApplicationActivationListener implements ApplicationActivationLis
      */
     @Override
     public void applicationActivated(@NotNull IdeFrame ideFrame) {
-        // 记录警告信息，提示移除不必要的示例代码文件
-        LOG.warn("Don't forget to remove all non-needed sample code files with their corresponding registration entries in `plugin.xml`.");
+        ClassFilter[] classFilters = MyPluginSettings.getInstance().getClassFilters();
+        for (ClassFilter classFilter : classFilters) {
+            final String pattern = classFilter.getPattern();
+            LOG.warn("pattern:" + pattern);
+        }
     }
 
     /**

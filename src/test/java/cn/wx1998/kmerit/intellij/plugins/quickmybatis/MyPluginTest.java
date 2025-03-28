@@ -6,7 +6,6 @@ import com.intellij.psi.xml.XmlFile;
 import com.intellij.testFramework.TestDataPath;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import com.intellij.util.PsiErrorElementUtil;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.MyProjectService;
 import org.junit.Test;
 
 /**
@@ -43,18 +42,6 @@ public class MyPluginTest extends BasePlatformTestCase {
     public void testRename() {
         // 执行重命名操作并验证结果
         myFixture.testRename("foo.xml", "foo_after.xml", "a2");
-    }
-
-    /**
-     * 测试 MyProjectService 的功能。
-     */
-    @Test
-    public void testProjectService() {
-        // 获取 MyProjectService 实例
-        MyProjectService projectService = ServiceManager.getService(getProject(), MyProjectService.class);
-
-        // 确保每次调用 getRandomNumber 方法返回不同的值
-        assertNotSame(projectService.getRandomNumber(), projectService.getRandomNumber());
     }
 
     /**
