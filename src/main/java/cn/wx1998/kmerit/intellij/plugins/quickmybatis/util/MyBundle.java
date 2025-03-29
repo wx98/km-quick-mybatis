@@ -1,4 +1,4 @@
-package cn.wx1998.kmerit.intellij.plugins.quickmybatis;
+package cn.wx1998.kmerit.intellij.plugins.quickmybatis.util;
 
 import com.intellij.DynamicBundle;
 import org.jetbrains.annotations.NonNls;

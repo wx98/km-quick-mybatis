@@ -1,6 +1,7 @@
 [versions]
 # libraries
 junit = "4.13.2"
+lombok = "1.18.34"
 
 # plugins
 changelog = "2.2.1"
@@ -11,6 +12,9 @@ qodana = "2024.3.4"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+lombok = { group = "org.projectlombok", name = "lombok", version.ref = "lombok" }
+
+
 
 [plugins]
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }
