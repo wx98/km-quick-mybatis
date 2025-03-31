@@ -1,51 +1,18 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting;
 // 导入相关类和接口
-
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.ui.MybatisClassFilterEditor;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.Icons;
-import com.github.weisj.jsvg.T;
-import com.intellij.debugger.settings.NodeRendererSettings;
-import com.intellij.debugger.settings.ViewsGeneralSettings;
-import com.intellij.debugger.ui.tree.render.ClassRenderer;
-import com.intellij.debugger.ui.tree.render.PrimitiveRenderer;
-import com.intellij.debugger.ui.tree.render.ToStringRenderer;
-import com.intellij.execution.ui.ClassBrowser;
-import com.intellij.ide.DataManager;
-import com.intellij.ide.util.gotoByName.SimpleChooseByNameModel;
-import com.intellij.openapi.actionSystem.ActionToolbarPosition;
-import com.intellij.openapi.actionSystem.DataContext;
-import com.intellij.openapi.actionSystem.PlatformDataKeys;
-import com.intellij.openapi.module.Module;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SearchableConfigurable;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.util.Computable;
-import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.NlsContexts;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.PsiClass;
-import com.intellij.psi.search.GlobalSearchScope;
-import com.intellij.psi.search.PsiShortNamesCache;
-import com.intellij.ui.*;
 import com.intellij.ui.classFilter.ClassFilter;
-import com.intellij.ui.classFilter.ClassFilterEditor;
-import com.intellij.util.ui.JBUI;
 import lombok.Getter;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.awt.*;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
-
-import static java.awt.GridBagConstraints.*;
 
 /**
  * 配置类，用于管理插件的设置界面。
@@ -59,7 +26,6 @@ public class MyPluginConfigurable implements SearchableConfigurable {
     // 设置表单对象，用于显示和编辑插件设置
     private MyPluginSettingsFrom mybatisSettingForm;
 
-    private MybatisClassFilterEditor mybatisClassFilterEditor;
 
     /**
      * 构造函数，初始化插件设置实例。
@@ -98,7 +64,6 @@ public class MyPluginConfigurable implements SearchableConfigurable {
         if (null == mybatisSettingForm) {
             this.mybatisSettingForm = new MyPluginSettingsFrom();
         }
-        mybatisClassFilterEditor = this.mybatisSettingForm.mybatisClassFilterEditor;
         return mybatisSettingForm.main;
     }
 
@@ -110,7 +75,7 @@ public class MyPluginConfigurable implements SearchableConfigurable {
     @Override
     public boolean isModified() {
         ClassFilter[] classFilters = MyPluginSettings.getInstance().getClassFilters();
-        ClassFilter[] filters = mybatisClassFilterEditor.getFilters();
+        ClassFilter[] filters = this.mybatisSettingForm.mybatisClassFilterEditor.getFilters();
         return !filterEquals(classFilters, filters);
     }
 
@@ -121,14 +86,14 @@ public class MyPluginConfigurable implements SearchableConfigurable {
      */
     @Override
     public void apply() {
-        final var filters = mybatisClassFilterEditor.getFilters();
+        final var filters = this.mybatisSettingForm.mybatisClassFilterEditor.getFilters();
         MyPluginSettings.getInstance().setClassFilters(filters);
     }
 
     @Override
     public void reset() {
         final var filters = MyPluginSettings.getInstance().getClassFilters();
-        mybatisClassFilterEditor.setFilters(filters);
+        this.mybatisSettingForm.mybatisClassFilterEditor.setFilters(filters);
     }
 
     public static boolean filterEquals(ClassFilter[] filters1, ClassFilter[] filters2) {
