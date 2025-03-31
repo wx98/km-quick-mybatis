@@ -8,7 +8,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
-import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
 import com.intellij.ui.classFilter.ClassFilter;
 import com.intellij.util.CommonProcessors;
@@ -108,9 +107,7 @@ public class JavaService implements Serializable {
             ids.add(childId);
         }
         mappers.stream()
-                .flatMap(mapper -> {
-                    return mapper.getDaoElements().stream();
-                }).
+                .flatMap(mapper -> mapper.getDaoElements().stream()).
                 filter(idDom -> {
                     Optional<Mapper> optional = Optional.ofNullable(DomUtil.getParentOfType(idDom, Mapper.class, true));
                     String namespace = "";
@@ -131,7 +128,7 @@ public class JavaService implements Serializable {
      */
     public void processField(@NotNull PsiField field, @NotNull Processor<Mapper> processor) {
         LOG.debug("3:\t" + field.getText().replaceAll("\n", ""));
-        if (!isType(field, String.class)) {
+        if (!isType(field)) {
             return;
         }
         PsiExpression initializer = field.getInitializer();
@@ -161,9 +158,7 @@ public class JavaService implements Serializable {
         }
         PsiClass psiClass = method.getContainingClass();
         PsiExpression[] args = methodCall.getArgumentList().getExpressions();
-        if (args.length == 0) {
-            return;
-        } else {
+        if (args.length != 0) {
             // 解析第一个参数的实际值
             String mappedStatementId = parseExpression(args[0]);
             Set<String> ids = new HashSet<>();
@@ -202,9 +197,8 @@ public class JavaService implements Serializable {
             Deque<String> parts = new ArrayDeque<>();
             flattenBinaryExpression((PsiBinaryExpression) expression, parts);
             return String.join("", parts);
-        } else if (expression instanceof PsiMethodCallExpression) {
+        } else if (expression instanceof PsiMethodCallExpression methodCall) {
             // 处理方法调用表达式
-            PsiMethodCallExpression methodCall = (PsiMethodCallExpression) expression;
             PsiReferenceExpression methodExpression = methodCall.getMethodExpression();
             String methodName = methodExpression.getReferenceName();
             if ("getName".equals(methodName)) {
@@ -224,25 +218,22 @@ public class JavaService implements Serializable {
         } else if (expression instanceof PsiReferenceExpression) {
             // 处理变量引用
             PsiElement resolved = ((PsiReferenceExpression) expression).resolve();
-            if (resolved instanceof PsiField) {
-                PsiField field = (PsiField) resolved;
+            if (resolved instanceof PsiField field) {
                 PsiExpression initializer = field.getInitializer();
                 if (initializer != null) {
                     return parseExpression(initializer);
                 }
-            } else if (resolved instanceof PsiLocalVariable) {
-                PsiLocalVariable localVar = (PsiLocalVariable) resolved;
+            } else if (resolved instanceof PsiLocalVariable localVar) {
                 PsiExpression initializer = localVar.getInitializer();
                 if (initializer != null) {
                     return parseExpression(initializer);
                 }
                 // 处理直接使用变量名作为字符串值的场景
-                if (localVar.getType() instanceof PsiClassReferenceType && String.class.getName().equals(((PsiClassReferenceType) localVar.getType()).getCanonicalText())) {
+                if (localVar.getType() instanceof PsiClassReferenceType && String.class.getName().equals(localVar.getType().getCanonicalText())) {
                     return localVar.getName();
                 }
             }
-        } else if (expression instanceof PsiPolyadicExpression) {
-            PsiPolyadicExpression polyadicExpression = (PsiPolyadicExpression) expression;
+        } else if (expression instanceof PsiPolyadicExpression polyadicExpression) {
             StringBuilder result = new StringBuilder();
             for (PsiExpression operand : polyadicExpression.getOperands()) {
                 result.append(parseExpression(operand));
@@ -279,16 +270,15 @@ public class JavaService implements Serializable {
      * 判断字段是否是指定类型的字段l
      *
      * @param type
-     * @param targetClass
      * @return
      */
-    private boolean isType(PsiField type, Class<String> targetClass) {
+    private boolean isType(PsiField type) {
         if (!(type.getType() instanceof PsiClassReferenceType)) {
             return false;
         }
         // 获取泛型擦除后的原始类型
         PsiClass psiClass = ((PsiClassReferenceType) type.getType()).rawType().resolve();
-        return psiClass != null && targetClass.getName().equals(psiClass.getQualifiedName());
+        return psiClass != null && String.class.getName().equals(psiClass.getQualifiedName());
     }
 
     /**
