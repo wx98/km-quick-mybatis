@@ -33,15 +33,10 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
         super(project);
         ToolbarDecorator decorator = ToolbarDecorator.createDecorator(this.myTable);
         decorator.addExtraAction(new AddClassFilterAction());
-        this.add(decorator.setRemoveAction(new AnActionButtonRunnable() {
-            public void run(AnActionButton button) {
-                TableUtil.removeSelectedItems(myTable);
-            }
-        }).setButtonComparator(new String[]{
+        this.add(decorator.setRemoveAction(button -> TableUtil.removeSelectedItems(myTable)).setButtonComparator(
                 this.getAddButtonText(),
                 this.getAddPatternButtonText(),
-                CommonBundle.message("button.remove", new Object[0])}
-        ).disableUpDownActions().createPanel(), "Center");
+                CommonBundle.message("button.remove", new Object[0])).disableUpDownActions().createPanel(), "Center");
     }
 
     @Override
@@ -120,12 +115,7 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
                 myTable.getSelectionModel().setSelectionInterval(row, row);
                 myTable.scrollRectToVisible(myTable.getCellRect(row, 0, true));
                 IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                IdeFocusManager.getGlobalInstance().requestFocus(myTable, true);
-                            }
-                        }
+                        () -> IdeFocusManager.getGlobalInstance().requestFocus(myTable, true)
                 );
             }
         }
