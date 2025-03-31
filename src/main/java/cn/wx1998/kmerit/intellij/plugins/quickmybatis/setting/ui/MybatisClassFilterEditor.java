@@ -56,7 +56,7 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
 
     @Override
     protected Icon getAddButtonIcon() {
-        return IconManager.getInstance().getIcon(Icons.IMAGES_ADD_SVG, MybatisClassFilterEditor.class);
+        return IconManager.getInstance().getIcon(Icons.IMAGES_ADD_LIST_SVG, MybatisClassFilterEditor.class);
     }
 
     private class AddClassFilterAction extends DumbAwareAction {
