@@ -41,14 +41,17 @@ public abstract class AbstractElementFilter {
                 targetMarkerInfo = methodExpression.getReferenceNameElement();
             }
 
-
             // 修改后的工具提示生成逻辑
             String tooltipText = buildTooltipText(element, targetMarkerInfo);
 
             // 将 DOM 元素转换为对应的 XML 标签列表
             final List<XmlTag> xmlTags = results.stream().map(DomElement::getXmlTag).collect(Collectors.toList());
             // 创建导航标记构建器，设置图标、对齐方式、渲染器、目标对象以及工具提示信息
-            NavigationGutterIconBuilder<PsiElement> builder = NavigationGutterIconBuilder.create(IconLoader.getIcon(IMAGES_MAPPER_METHOD_SVG)).setAlignment(GutterIconRenderer.Alignment.CENTER).setCellRenderer(new GotoMapperXmlSchemaTypeRendererProvider.MyRenderer()).setTargets(xmlTags).setTooltipTitle(tooltipText);
+            NavigationGutterIconBuilder<PsiElement> builder =
+                    NavigationGutterIconBuilder.create(IconLoader.getIcon(IMAGES_MAPPER_METHOD_SVG))
+                            .setAlignment(GutterIconRenderer.Alignment.CENTER)
+                            .setCellRenderer(new GotoMapperXmlSchemaTypeRendererProvider.MyRenderer()).setTargets(xmlTags)
+                            .setTooltipTitle(tooltipText);
 
             // 将生成的导航标记信息添加到结果集中
             if (targetMarkerInfo != null) {

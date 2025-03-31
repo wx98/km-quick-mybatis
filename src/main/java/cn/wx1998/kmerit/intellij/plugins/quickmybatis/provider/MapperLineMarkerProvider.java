@@ -29,7 +29,8 @@ public class MapperLineMarkerProvider extends RelatedItemLineMarkerProvider {
 
     @Override
     protected void collectNavigationMarkers(@NotNull PsiElement element, @NotNull Collection<? super RelatedItemLineMarkerInfo<?>> result) {
-        createFilter(element).collectNavigationMarkers(element, result);
+        final var filter = createFilter(element);
+        filter.collectNavigationMarkers(element, result);
     }
 
     // 定义一个工厂方法来创建过滤器
@@ -47,8 +48,7 @@ public class MapperLineMarkerProvider extends RelatedItemLineMarkerProvider {
         protected Collection<? extends DomElement> getResults(@NotNull PsiElement element) {
             // 收集与PsiClass相关的Mapper节点
             CommonProcessors.CollectProcessor<DomElement> processor = new CommonProcessors.CollectProcessor<>();
-            // JavaService.getInstance(element.getProject()).processClass((PsiClass) element, processor);
-            LOG.warn("1:\t" + element.getText().replaceAll("\n", ""));
+            JavaService.getInstance(element.getProject()).processClass((PsiClass) element, processor);
             return processor.getResults();
         }
     }
@@ -58,8 +58,7 @@ public class MapperLineMarkerProvider extends RelatedItemLineMarkerProvider {
         protected Collection<? extends DomElement> getResults(@NotNull PsiElement element) {
             // 收集与PsiMethod相关的ID DOM元素节点
             CommonProcessors.CollectProcessor<DomElement> processor = new CommonProcessors.CollectProcessor<>();
-            // JavaService.getInstance(element.getProject()).processMethod(((PsiMethod) element), processor);
-            LOG.warn("2:\t" + element.getText().replaceAll("\n", ""));
+            JavaService.getInstance(element.getProject()).processMethod(((PsiMethod) element), processor);
             return processor.getResults();
         }
     }
@@ -69,8 +68,7 @@ public class MapperLineMarkerProvider extends RelatedItemLineMarkerProvider {
         @Override
         protected Collection<? extends DomElement> getResults(@NotNull PsiElement element) {
             CommonProcessors.CollectProcessor<Mapper> processor = new CommonProcessors.CollectProcessor<>();
-            //JavaService.getInstance(element.getProject()).processField((PsiField) element, processor);
-            LOG.warn("3:\t" + element.getText().replaceAll("\n", ""));
+            JavaService.getInstance(element.getProject()).processField((PsiField) element, processor);
             return processor.getResults();
         }
     }
@@ -80,7 +78,6 @@ public class MapperLineMarkerProvider extends RelatedItemLineMarkerProvider {
         protected Collection<? extends DomElement> getResults(@NotNull PsiElement element) {
             CommonProcessors.CollectProcessor<DomElement> processor = new CommonProcessors.CollectProcessor<>();
             JavaService.getInstance(element.getProject()).processMethodCall(((PsiMethodCallExpression) element), processor);
-            LOG.warn("4:\t" + element.getText().replaceAll("\n", ""));
             return processor.getResults();
         }
     }

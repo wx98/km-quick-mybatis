@@ -32,10 +32,6 @@
                 id="cn.wx1998.JavaService"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService"
         />
-        <projectService
-                id="cn.wx1998.EditorService"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.EditorService"
-        />
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
@@ -45,11 +41,12 @@
                 language="JAVA"
                 implementationClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.MapperLineMarkerProvider"
         />
-        <!--        &lt;!&ndash; xml 跳转到 java &ndash;&gt;-->
-        <!--        <codeInsight.lineMarkerProvider id="wx1998.StatementLineMarkerProvider"-->
-        <!--                                        language="XML"-->
-        <!--                                        implementationClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.StatementLineMarkerProvider"-->
-        <!--        />-->
+        <!-- xml 跳转到 java -->
+<!--        <codeInsight.lineMarkerProvider-->
+<!--                id="wx1998.StatementLineMarkerProvider"-->
+<!--                language="XML"-->
+<!--                implementationClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.StatementLineMarkerProvider"-->
+<!--        />-->
 
 
         <!-- 应用服务 -->
