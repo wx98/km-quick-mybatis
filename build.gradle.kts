@@ -66,8 +66,6 @@ dependencies {
         // 插件依赖项。对于 JetBrains Marketplace 插件，使用 gradle.properties 文件中的 'platformPlugins' 属性。
         plugins(providers.gradleProperty("platformPlugins").map { it.split(',') })
 
-        // Instrumentation 工具
-        instrumentationTools()
         // 插件调试工具
         pluginVerifier()
         // 签名工具
