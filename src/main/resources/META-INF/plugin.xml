@@ -7,57 +7,18 @@
     <!-- 作者 -->
     <vendor>wx98</vendor>
     <!-- 依赖 -->
-    <depends>com.intellij.java</depends>
     <depends>com.intellij.modules.platform</depends>
     <!-- 资源包 -->
     <resource-bundle>messages.MyBundle</resource-bundle>
     <!-- 扩展点 -->
     <extensions defaultExtensionNs="com.intellij">
+        <toolWindow factoryClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.toolWindow.MyToolWindowFactory"
+                    id="MyToolWindow"/>
     </extensions>
     <!-- 监听器 -->
     <applicationListeners>
         <listener
-                topic="com.intellij.openapi.application.ApplicationActivationListener"
                 class="cn.wx1998.kmerit.intellij.plugins.quickmybatis.listeners.MyApplicationActivationListener"
-        />
+                topic="com.intellij.openapi.application.ApplicationActivationListener"/>
     </applicationListeners>
-
-    <extensions defaultExtensionNs="com.intellij">
-        <dom.fileMetaData
-                id="cn.wx1998.MapperDescription"
-                rootTagName="mapper"
-                implementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.dom.description.MapperDescription"
-        />
-        <projectService
-                id="cn.wx1998.JavaService"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService"
-        />
-    </extensions>
-
-    <extensions defaultExtensionNs="com.intellij">
-        <!-- java 跳转到 xml  实现代码导航功能 -->
-        <codeInsight.lineMarkerProvider
-                id="cn.wx1998.MapperLineMarkerProvider"
-                language="JAVA"
-                implementationClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.MapperLineMarkerProvider"
-        />
-        <!-- xml 跳转到 java -->
-        <codeInsight.lineMarkerProvider
-                id="wx1998.StatementLineMarkerProvider"
-                language="XML"
-                implementationClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.StatementLineMarkerProvider"
-        />
-        <!-- 插件的配置 -->
-        <applicationService
-                id="cn.wx1998.MyPluginSettings"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginSettings"
-        />
-        <!-- 插件配置 -->
-        <applicationConfigurable
-                id="cn.wx1998.MyPluginConfigurable"
-                displayName="Km-Quick-Mybatis"
-                parentId="tools"
-                instance="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginConfigurable"
-        />
-    </extensions>
 </idea-plugin>
