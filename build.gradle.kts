@@ -21,7 +21,13 @@ kotlin {
 
 // Configure project's dependencies
 repositories {
+     mavenLocal()
+    maven { url=uri("https://maven.aliyun.com/repository/public/") }
     mavenCentral()
+    maven { url=uri("https://plugins.gradle.org/m2/") }
+    maven { url=uri("https://oss.sonatype.org/content/repositories/releases/") }
+    maven { url=uri("https://dl.bintray.com/jetbrains/intellij-plugin-service") }
+    maven { url=uri("https://dl.bintray.com/jetbrains/intellij-third-party-dependencies/") }
 
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {
@@ -32,8 +38,7 @@ repositories {
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
 dependencies {
     testImplementation(libs.junit)
-
-    //    implementation(libs.annotations)
+    compileClasspath(libs.lombok)
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
@@ -61,8 +66,6 @@ dependencies {
         // 插件依赖项。对于 JetBrains Marketplace 插件，使用 gradle.properties 文件中的 'platformPlugins' 属性。
         plugins(providers.gradleProperty("platformPlugins").map { it.split(',') })
 
-        // Instrumentation 工具
-        instrumentationTools()
         // 插件调试工具
         pluginVerifier()
         // 签名工具
