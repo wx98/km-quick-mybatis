@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- 无效的MyBatis文件 - 没有mapper根标签 -->
+<invalid-root>
+    <mapper>
+        <!-- 没有namespace属性 -->
+        <select id="selectSomething">
+            SELECT * FROM some_table
+        </select>
+    </mapper>
+</invalid-root>

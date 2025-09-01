@@ -26,7 +26,7 @@ public class MyApplicationActivationListener implements ApplicationActivationLis
         ClassFilter[] classFilters = MyPluginSettings.getInstance().getClassFilters();
         for (ClassFilter classFilter : classFilters) {
             final String pattern = classFilter.getPattern();
-            LOG.warn("pattern:" + pattern);
+            LOG.debug("pattern:" + pattern);
         }
     }
 

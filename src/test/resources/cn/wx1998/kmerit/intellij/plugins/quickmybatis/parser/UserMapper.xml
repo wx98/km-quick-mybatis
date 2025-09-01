@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.UserMapper">
+
+    <!-- SQL片段 -->
+    <sql id="Base_Column_List">
+        id
+        , username, password, email, created_at, updated_at
+    </sql>
+
+    <!-- 结果映射 -->
+    <resultMap id="UserResultMap" type="com.example.User">
+        <id column="id" property="id"/>
+        <result column="username" property="username"/>
+        <result column="password" property="password"/>
+        <result column="email" property="email"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 查询语句 -->
+    <select id="selectById" parameterType="java.lang.Long" resultMap="UserResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM users
+        WHERE id = #{id}
+    </select>
+
+    <!-- 插入语句 -->
+    <insert id="insert" parameterType="com.example.User">
+        INSERT INTO users (
+        username, password, email, created_at, updated_at
+        )
+        VALUES (
+        #{username}, #{password}, #{email}, #{createdAt}, #{updatedAt}
+        )
+        <selectKey keyProperty="id" order="AFTER" resultType="java.lang.Long">
+            SELECT LAST_INSERT_ID()
+        </selectKey>
+    </insert>
+
+    <!-- 更新语句 -->
+    <update id="update" parameterType="com.example.User">
+        UPDATE users
+        SET username   = #{username},
+            password   = #{password},
+            email      = #{email},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除语句 -->
+    <delete id="delete" parameterType="java.lang.Long">
+        DELETE
+        FROM users
+        WHERE id = #{id}
+    </delete>
+
+    <!-- 复杂查询 -->
+    <select id="selectByCondition" parameterType="map" resultMap="UserResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM users
+        <where>
+            <if test="username != null">
+                AND username = #{username}
+            </if>
+            <if test="email != null">
+                AND email = #{email}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+</mapper>

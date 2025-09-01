@@ -1,19 +1,22 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.services;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.dom.Mapper;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParser;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParser.MyBatisParseResult;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParserFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginSettings;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.DomUtils;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
-import com.intellij.psi.search.searches.ClassInheritorsSearch;
+import com.intellij.psi.xml.XmlFile;
+import com.intellij.psi.xml.XmlTag;
 import com.intellij.ui.classFilter.ClassFilter;
 import com.intellij.util.CommonProcessors;
 import com.intellij.util.Processor;
-import com.intellij.util.Query;
-import com.intellij.util.xml.*;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.Serial;
@@ -37,14 +40,6 @@ public class JavaService implements Serializable {
 
     private final JavaPsiFacade javaPsiFacade;
 
-    public JavaPsiFacade getJavaPsiFacade() {
-        return javaPsiFacade;
-    }
-
-    public Project getProject() {
-        return project;
-    }
-
     /**
      * Instantiates a new Java service.
      *
@@ -63,123 +58,6 @@ public class JavaService implements Serializable {
      */
     public static JavaService getInstance(@NotNull Project project) {
         return project.getService(JavaService.class);
-    }
-
-    /**
-     * 处理类跳转逻辑
-     *
-     * @param psiClass
-     * @param processor
-     */
-    public void processClass(PsiClass psiClass, CommonProcessors.CollectProcessor<DomElement> processor) {
-        LOG.debug("1:\t" + psiClass.getText().replaceAll("\n", ""));
-        String ns = psiClass.getQualifiedName();
-        for (Mapper mapper : DomUtils.findDomElements(project, Mapper.class)) {
-            final String namespace = mapper.getNamespace().getStringValue();
-            if (namespace != null && (namespace.equals(ns) || namespace.equals(ns + "Mapper"))) {
-                processor.process(mapper);
-            }
-        }
-    }
-
-    /**
-     * 处理方法跳转逻辑
-     *
-     * @param psiMethod
-     * @param processor
-     */
-    public void processMethod(PsiMethod psiMethod, CommonProcessors.CollectProcessor<DomElement> processor) {
-        LOG.debug("2:\t" + psiMethod.getText().replaceAll("\n", ""));
-
-        PsiClass psiClass = psiMethod.getContainingClass();
-        if (null == psiClass) {
-            return;
-        }
-        Collection<Mapper> mappers = DomUtils.findDomElements(project, Mapper.class);
-        Set<String> ids = new HashSet<>();
-        String id = psiClass.getQualifiedName() + "." + psiMethod.getName();
-        ids.add(id);
-        final Query<PsiClass> search = ClassInheritorsSearch.search(psiClass);
-        final Collection<PsiClass> allChildren = search.findAll();
-
-        for (PsiClass psiElement : allChildren) {
-            String childId = psiElement.getQualifiedName() + "." + psiMethod.getName();
-            ids.add(childId);
-        }
-        mappers.stream()
-                .flatMap(mapper -> mapper.getDaoElements().stream()).
-                filter(idDom -> {
-                    Optional<Mapper> optional = Optional.ofNullable(DomUtil.getParentOfType(idDom, Mapper.class, true));
-                    String namespace = "";
-                    if (optional.isPresent()) {
-                        namespace = optional.get().getNamespace().getStringValue();
-                    }
-                    String idSignature = (namespace +"." + idDom.getId());
-                    return ids.contains(idSignature);
-                })
-                .forEach(processor::process);
-    }
-
-    /**
-     * 处理字段跳转逻辑
-     *
-     * @param field
-     * @param processor
-     */
-    public void processField(@NotNull PsiField field, @NotNull Processor<Mapper> processor) {
-        LOG.debug("3:\t" + field.getText().replaceAll("\n", ""));
-        if (!isType(field)) {
-            return;
-        }
-        PsiExpression initializer = field.getInitializer();
-        if (initializer != null) {
-            String fieldValue = parseExpression(initializer);
-            for (Mapper mapper : DomUtils.findDomElements(field.getProject(), Mapper.class)) {
-                final var stringValue = mapper.getNamespace().getStringValue();
-                if (stringValue != null && (stringValue.equals(fieldValue) || stringValue.equals(fieldValue + "Mapper"))) {
-                    processor.process(mapper);
-                }
-            }
-        }
-
-    }
-
-    /**
-     * 处理方法调用跳转逻辑
-     *
-     * @param methodCall
-     * @param processor
-     */
-    public void processMethodCall(@NotNull PsiMethodCallExpression methodCall, @NotNull Processor<DomElement> processor) {
-        LOG.debug("4:\t" + methodCall.getText().replaceAll("\n", ""));
-        PsiMethod method = methodCall.resolveMethod();
-        if (method == null || !isSqlSessionMethod(method)) {
-            return;
-        }
-        PsiClass psiClass = method.getContainingClass();
-        PsiExpression[] args = methodCall.getArgumentList().getExpressions();
-        if (args.length != 0) {
-            // 解析第一个参数的实际值
-            String mappedStatementId = parseExpression(args[0]);
-            Set<String> ids = new HashSet<>();
-            ids.add(mappedStatementId);
-            Collection<Mapper> mappers = DomUtils.findDomElements(methodCall.getProject(), Mapper.class);
-            mappers.stream()
-                    .flatMap(mapper -> mapper.getDaoElements().stream()).
-                    filter(
-                            idDom -> {
-                                Optional<Mapper> optional = Optional.ofNullable(DomUtil.getParentOfType(idDom, Mapper.class, true));
-                                String namespace = "";
-                                if (optional.isPresent()) {
-                                    namespace = optional.get().getNamespace().getStringValue();
-                                }
-                                String idSignature = (namespace +"." + idDom.getId());
-                                return ids.contains(idSignature);
-                            }
-                    )
-                    .forEach(processor::process);
-        }
-
     }
 
     /**
@@ -263,6 +141,197 @@ public class JavaService implements Serializable {
             flattenBinaryExpression((PsiBinaryExpression) rOperand, parts);
         } else {
             parts.addLast(parseExpression(rOperand));
+        }
+    }
+
+    public JavaPsiFacade getJavaPsiFacade() {
+        return javaPsiFacade;
+    }
+
+    public Project getProject() {
+        return project;
+    }
+
+    /**
+     * 获取项目中所有的MyBatis XML文件 //todo 这里要走缓存
+     */
+    private List<XmlFile> getMyBatisXmlFiles() {
+        LOG.debug("Finding all MyBatis XML files in project");
+        List<XmlFile> mybatisFiles = new ArrayList<>();
+
+        // 获取项目的所有内容根目录
+        for (VirtualFile contentRoot : ProjectRootManager.getInstance(project).getContentSourceRoots()) {
+            if (contentRoot != null && contentRoot.isDirectory() && contentRoot.isValid()) {
+                findXmlFilesRecursively(contentRoot, mybatisFiles);
+            }
+        }
+
+        LOG.debug("Total MyBatis XML files found: " + mybatisFiles.size());
+        return mybatisFiles;
+    }
+
+    /**
+     * 递归查找 XML 文件
+     */
+    private void findXmlFilesRecursively(VirtualFile directory, List<XmlFile> result) {
+        if (directory == null || !directory.isDirectory() || !directory.isValid()) {
+            return;
+        }
+
+        for (VirtualFile file : directory.getChildren()) {
+            if (file.isDirectory()) {
+                findXmlFilesRecursively(file, result);
+            } else if (file.getName().toLowerCase().endsWith(".xml")) {
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
+                if (psiFile instanceof XmlFile && DomUtils.isMybatisFile(psiFile)) {
+                    result.add((XmlFile) psiFile);
+                    LOG.debug("Found MyBatis XML file: " + file.getPath());
+                }
+            }
+        }
+
+        return;
+    }
+
+    /**
+     * 处理类跳转逻辑
+     *
+     * @param psiClass
+     * @param processor
+     */
+    public void processClass(PsiClass psiClass, CommonProcessors.CollectProcessor<XmlTag> processor) {
+        LOG.debug("Processing class for MyBatis mapping: " + psiClass.getName());
+        String ns = psiClass.getQualifiedName();
+
+        MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
+        List<XmlFile> myBatisXmlFiles = getMyBatisXmlFiles();
+
+        for (XmlFile xmlFile : myBatisXmlFiles) {
+            MyBatisParseResult result = parser.parse(xmlFile);
+            String namespace = result.getNamespace();
+
+            if (namespace != null && (namespace.equals(ns) || namespace.equals(ns + "Mapper"))) {
+                LOG.debug("Found matching namespace: " + namespace + " for class: " + ns);
+
+                XmlTag rootMapper = result.getRootMapper();
+                processor.process(rootMapper);
+            }
+        }
+    }
+
+    /**
+     * 处理方法跳转逻辑
+     *
+     * @param psiMethod
+     * @param processor
+     */
+    public void processMethod(PsiMethod psiMethod, CommonProcessors.CollectProcessor<XmlTag> processor) {
+        LOG.debug("Processing method for MyBatis mapping: " + psiMethod.getName());
+
+        PsiClass psiClass = psiMethod.getContainingClass();
+        if (null == psiClass) {
+            LOG.debug("Method has no containing class");
+            return;
+        }
+        if (!psiClass.isInterface()){
+            return;
+        }
+        String qualifiedName = psiClass.getQualifiedName();
+        String methodName = psiMethod.getName();
+        String id = qualifiedName + "." + methodName;
+
+        // 现在使用新的XML解析器来查找匹配的SQL语句
+        MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
+        List<XmlFile> myBatisXmlFiles = getMyBatisXmlFiles();
+
+        for (XmlFile xmlFile : myBatisXmlFiles) {
+            MyBatisParseResult result = parser.parse(xmlFile);
+            String namespace = result.getNamespace();
+
+            if (namespace != null && (namespace.equals(qualifiedName + "Mapper") || namespace.equals(qualifiedName))) {
+                List<XmlTag> statementById = result.getStatementById(methodName);
+                if (statementById != null) {
+                    for (XmlTag statement : statementById) {
+                        processor.process(statement);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 处理字段跳转逻辑
+     *
+     * @param field
+     * @param processor
+     */
+    public void processField(@NotNull PsiField field, @NotNull Processor processor) {
+        LOG.debug("Processing field for MyBatis mapping: " + field.getName());
+
+        // 这里不再需要类型检查，因为我们不再依赖特定的DOM类型
+        PsiExpression initializer = field.getInitializer();
+        if (initializer != null) {
+            String fieldValue = parseExpression(initializer);
+            LOG.debug("Field value: " + fieldValue);
+
+            MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
+            List<XmlFile> myBatisXmlFiles = getMyBatisXmlFiles();
+
+            for (XmlFile xmlFile : myBatisXmlFiles) {
+                MyBatisParseResult result = parser.parse(xmlFile);
+                String namespace = result.getNamespace();
+
+                if (namespace != null && (namespace.equals(fieldValue) || namespace.equals(fieldValue + "Mapper"))) {
+                    LOG.debug("Found matching namespace: " + namespace + " for field value: " + fieldValue);
+                    XmlTag rootMapper = result.getRootMapper();
+                    processor.process(rootMapper);
+                }
+            }
+        }
+    }
+
+    /**
+     * 处理方法调用跳转逻辑
+     *
+     * @param methodCall
+     * @param processor
+     */
+    public void processMethodCall(@NotNull PsiMethodCallExpression methodCall, @NotNull Processor processor) {
+        LOG.debug("Processing method call for MyBatis mapping");
+        PsiMethod method = methodCall.resolveMethod();
+        if (method == null || !isSqlSessionMethod(method)) {
+            LOG.debug("Not a valid SqlSession method call");
+            return;
+        }
+
+        PsiExpression[] args = methodCall.getArgumentList().getExpressions();
+        if (args.length != 0) {
+            // 解析第一个参数的实际值
+            String mappedStatementId = parseExpression(args[0]);
+            LOG.debug("Mapped statement ID: " + mappedStatementId);
+
+            // 使用新的XML解析器来查找匹配的SQL语句
+            MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
+            List<XmlFile> myBatisXmlFiles = getMyBatisXmlFiles();
+
+            for (XmlFile xmlFile : myBatisXmlFiles) {
+                MyBatisParseResult result = parser.parse(xmlFile);
+                String namespace = result.getNamespace();
+
+                if (namespace != null && mappedStatementId.startsWith(namespace)) {
+                    // 获取所有语句并进行匹配
+                    Map<String, List<XmlTag>> statements = result.getStatements();
+                    for (String key : statements.keySet()) {
+                        List<XmlTag> xmlTagList = statements.get(key);
+                        LOG.debug("Processing statement in file: " + xmlFile.getVirtualFile().getPath());
+                        for (XmlTag tag : xmlTagList) {
+                            if (mappedStatementId.equals(namespace + "." + key)) {
+                                processor.process(tag);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
