@@ -21,19 +21,30 @@ kotlin {
 
 // Configure project's dependencies
 repositories {
-     mavenLocal()
-    maven { url=uri("https://maven.aliyun.com/repository/public/") }
+    mavenLocal()
+    maven {
+        url = uri("https://maven.aliyun.com/repository/public/")
+        isAllowInsecureProtocol = false
+    }
     mavenCentral()
-    maven { url=uri("https://plugins.gradle.org/m2/") }
-    maven { url=uri("https://oss.sonatype.org/content/repositories/releases/") }
-    maven { url=uri("https://dl.bintray.com/jetbrains/intellij-plugin-service") }
-    maven { url=uri("https://dl.bintray.com/jetbrains/intellij-third-party-dependencies/") }
+    maven { url = uri("https://plugins.gradle.org/m2/") }
+    maven { url = uri("https://oss.sonatype.org/content/repositories/releases/") }
+    maven { url = uri("https://dl.bintray.com/jetbrains/intellij-plugin-service") }
+    maven { url = uri("https://dl.bintray.com/jetbrains/intellij-third-party-dependencies/") }
 
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {
         defaultRepositories()
     }
 }
+
+// Disable proxy settings to bypass the connection to 127.0.0.1:33210
+//System.setProperty("http.proxyHost", "")
+//System.setProperty("http.proxyPort", "")
+//System.setProperty("https.proxyHost", "")
+//System.setProperty("https.proxyPort", "")
+//System.setProperty("http.nonProxyHosts", "*")
+
 
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
 dependencies {
@@ -156,6 +167,13 @@ tasks {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
     }
 
+    // 设置Java编译任务的编码为UTF-8
+    withType<JavaCompile> {
+        options.encoding = "UTF-8"
+    }
+
+    // 对于Kotlin，IntelliJ Platform Gradle Plugin会自动配置编码
+    // 但我们可以通过intellijPlatform扩展确保编码设置正确
     publishPlugin {
         dependsOn(patchChangelog)
     }

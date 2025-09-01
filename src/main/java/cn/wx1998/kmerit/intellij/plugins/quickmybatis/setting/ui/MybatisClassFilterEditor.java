@@ -6,7 +6,8 @@ import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.ide.util.TreeClassChooser;
 import com.intellij.ide.util.TreeClassChooserFactory;
 import com.intellij.java.JavaBundle;
-import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAwareAction;
@@ -17,14 +18,16 @@ import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiTreeUtil;
-import com.intellij.ui.*;
+import com.intellij.ui.IconManager;
+import com.intellij.ui.TableUtil;
+import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.classFilter.ClassFilter;
 import com.intellij.ui.classFilter.ClassFilterEditor;
-
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+
 public class MybatisClassFilterEditor extends ClassFilterEditor {
 
     private static final Logger LOG = Logger.getInstance(MybatisClassFilterEditor.class);
@@ -51,10 +54,13 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
 
     @Override
     protected Icon getAddButtonIcon() {
-        return IconManager.getInstance().getIcon(Icons.IMAGES_ADD_LIST_SVG, MybatisClassFilterEditor.class);
+        return IconManager.getInstance().getIcon(Icons.IMAGES_ADD_LIST_SVG, this.getClass().getClassLoader());
     }
 
     private class AddClassFilterAction extends DumbAwareAction {
+
+        // 在类级别缓存Throwable类
+        private volatile PsiClass cachedThrowableClass;
 
         private AddClassFilterAction() {
             super(getAddButtonText(), null, getAddButtonIcon());
@@ -70,15 +76,14 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
             return ActionUpdateThread.BGT;
         }
 
-        // 在类级别缓存Throwable类
-        private volatile PsiClass cachedThrowableClass;
-
         private PsiClass getThrowableClass(Project project) {
             if (cachedThrowableClass == null || !cachedThrowableClass.isValid()) {
-                cachedThrowableClass = ReadAction.compute(() ->
-                        JavaPsiFacade.getInstance(project).findClass(
-                                CommonClassNames.JAVA_LANG_THROWABLE, GlobalSearchScope.allScope(project)
-                        )
+                cachedThrowableClass = ReadAction.compute(
+                        () -> JavaPsiFacade.getInstance(project)
+                                .findClass(
+                                        CommonClassNames.JAVA_LANG_THROWABLE,
+                                        GlobalSearchScope.allScope(project)
+                                )
                 );
             }
             return cachedThrowableClass;
@@ -92,8 +97,7 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
             GlobalSearchScope searchScope = GlobalSearchScope.allScope(project);
             PsiClass throwableClass = getThrowableClass(project);
 
-            TreeClassChooser classChooser = TreeClassChooserFactory
-                    .getInstance(project)
+            TreeClassChooser classChooser = TreeClassChooserFactory.getInstance(project)
                     .createInheritanceClassChooser(
                             JavaBundle.message("class.filter.editor.choose.class.title"),
                             searchScope,

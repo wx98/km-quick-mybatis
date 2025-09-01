@@ -1,0 +1,133 @@
+package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache;
+
+import com.intellij.openapi.project.Project;
+import com.intellij.psi.PsiFile;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Set;
+
+/**
+ * MyBatis 缓存管理器接口
+ * 负责管理Java类和MyBatis XML文件之间的映射关系缓存
+ */
+public interface MyBatisCacheManager {
+
+    /**
+     * 获取指定项目的缓存管理器实例
+     *
+     * @param project 当前项目
+     * @return 缓存管理器实例
+     */
+    MyBatisCacheManager getInstance(@NotNull Project project);
+
+    /**
+     * 获取Java类与XML文件的映射关系
+     *
+     * @param className Java类名
+     * @return XML文件路径列表
+     */
+    Set<String> getXmlFilesForClass(@NotNull String className);
+
+    /**
+     * 获取XML文件与Java类的映射关系
+     *
+     * @param xmlFilePath XML文件路径
+     * @return Java类名
+     */
+    String getClassForXmlFile(@NotNull String xmlFilePath);
+
+    /**
+     * 获取Java方法与XML语句ID的映射关系
+     *
+     * @param className  Java类名
+     * @param methodName Java方法名
+     * @return XML语句ID
+     */
+    String getStatementIdForMethod(@NotNull String className, @NotNull String methodName);
+
+    /**
+     * 获取XML语句ID与Java方法的映射关系
+     *
+     * @param xmlFilePath XML文件路径
+     * @param statementId XML语句ID
+     * @return Java方法名
+     */
+    String getMethodForStatementId(@NotNull String xmlFilePath, @NotNull String statementId);
+
+    /**
+     * 存储Java类与XML文件的映射关系
+     *
+     * @param className   Java类名
+     * @param xmlFilePath XML文件路径
+     */
+    void putClassXmlMapping(@NotNull String className, @NotNull String xmlFilePath);
+
+    /**
+     * 存储Java方法与XML语句ID的映射关系
+     *
+     * @param className   Java类名
+     * @param methodName  Java方法名
+     * @param statementId XML语句ID
+     */
+    void putMethodStatementMapping(@NotNull String className, @NotNull String methodName, @NotNull String statementId);
+
+    /**
+     * 清除指定Java类的所有缓存
+     *
+     * @param className Java类名
+     */
+    void clearClassCache(@NotNull String className);
+
+    /**
+     * 清除指定XML文件的所有缓存
+     *
+     * @param xmlFilePath XML文件路径
+     */
+    void clearXmlFileCache(@NotNull String xmlFilePath);
+
+    /**
+     * 清除所有缓存
+     */
+    void clearAllCache();
+
+    /**
+     * 标记文件缓存失效
+     *
+     * @param file 要标记失效的文件
+     */
+    void invalidateFileCache(@NotNull PsiFile file);
+
+    /**
+     * 检查文件缓存是否有效
+     *
+     * @param filePath 文件路径
+     * @return 如果缓存有效则返回true，否则返回false
+     */
+    boolean isCacheValid(@NotNull String filePath);
+
+    /**
+     * 刷新所有失效的缓存
+     */
+    void refreshInvalidatedCaches();
+
+    /**
+     * 获取当前缓存配置
+     *
+     * @return 缓存配置
+     */
+    @NotNull MyBatisCacheConfig getCacheConfig();
+
+    /**
+     * 设置缓存配置
+     *
+     * @param config 缓存配置
+     */
+    void setCacheConfig(@NotNull MyBatisCacheConfig config);
+
+    /**
+     * 获取缓存统计信息
+     *
+     * @return 缓存统计信息
+     */
+    @NotNull CacheStatistics getCacheStatistics();
+}

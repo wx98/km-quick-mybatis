@@ -16,17 +16,17 @@ public interface Icons {
     String IMAGES_STATEMENT_SVG = "/images/go_to_class.svg";
 
     /**
-     *  设置中的添加按钮的图标
+     * 设置中的添加按钮的图标
      */
     String IMAGES_ADD_LIST_SVG = "/icons/addList.svg";
 
     /**
-     *  设置中的删除按钮的图标
+     * 设置中的删除按钮的图标
      */
     String IMAGES_DELETE_SVG = "/icons/delete.svg";
 
     /**
-     *  设置中的编辑按钮的图标
+     * 设置中的编辑按钮的图标
      */
     String IMAGES_EDIT_SVG = "/icons/edit.svg";
 }

@@ -43,12 +43,12 @@ public final class MyBundle extends DynamicBundle {
     /**
      * 根据键获取资源文件中的消息。
      *
-     * @param key 消息键。
+     * @param key    消息键。
      * @param params 替换消息中的占位符的参数。
      * @return 资源文件中的消息。
      */
     @NotNull
-    public static String message(@NotNull @PropertyKey(resourceBundle = BUNDLE) String key, Object @NotNull ... params) {
+    public static String message(@NotNull @PropertyKey(resourceBundle = BUNDLE) String key, Object... params) {
         return INSTANCE.getMessage(key, params);
     }
 

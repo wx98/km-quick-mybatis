@@ -1,6 +1,5 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting;
-// 导入相关类和接口
-import com.intellij.openapi.options.ConfigurationException;
+
 import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.ui.classFilter.ClassFilter;
@@ -32,6 +31,17 @@ public class MyPluginConfigurable implements SearchableConfigurable {
      */
     public MyPluginConfigurable() {
         pluginSettings = MyPluginSettings.getInstance();
+    }
+
+    public static boolean filterEquals(ClassFilter[] filters1, ClassFilter[] filters2) {
+        if (filters1.length != filters2.length) {
+            return false;
+        }
+        final Set<ClassFilter> f1 = new HashSet<>(Math.max((int) (filters1.length / .75f) + 1, 16));
+        final Set<ClassFilter> f2 = new HashSet<>(Math.max((int) (filters2.length / .75f) + 1, 16));
+        Collections.addAll(f1, filters1);
+        Collections.addAll(f2, filters2);
+        return f2.equals(f1);
     }
 
     /**
@@ -81,8 +91,6 @@ public class MyPluginConfigurable implements SearchableConfigurable {
 
     /**
      * 应用配置更改。
-     *
-     * @throws ConfigurationException 如果配置更改应用失败则抛出异常
      */
     @Override
     public void apply() {
@@ -94,16 +102,5 @@ public class MyPluginConfigurable implements SearchableConfigurable {
     public void reset() {
         final var filters = MyPluginSettings.getInstance().getClassFilters();
         this.mybatisSettingForm.mybatisClassFilterEditor.setFilters(filters);
-    }
-
-    public static boolean filterEquals(ClassFilter[] filters1, ClassFilter[] filters2) {
-        if (filters1.length != filters2.length) {
-            return false;
-        }
-        final Set<ClassFilter> f1 = new HashSet<>(Math.max((int) (filters1.length / .75f) + 1, 16));
-        final Set<ClassFilter> f2 = new HashSet<>(Math.max((int) (filters2.length / .75f) + 1, 16));
-        Collections.addAll(f1, filters1);
-        Collections.addAll(f2, filters2);
-        return f2.equals(f1);
     }
 }
