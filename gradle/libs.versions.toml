@@ -1,7 +1,7 @@
 [versions]
 # libraries
 junit = "4.13.2"
-lombok = "1.18.38"
+lombok = "1.18.40"
 
 # plugins
 changelog = "2.4.0"
