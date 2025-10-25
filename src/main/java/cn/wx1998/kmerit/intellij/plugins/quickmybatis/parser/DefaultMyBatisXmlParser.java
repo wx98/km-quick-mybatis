@@ -9,6 +9,7 @@ import com.intellij.psi.xml.XmlTag;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 默认MyBatis XML解析器实现类
@@ -18,6 +19,8 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
 
     private static final Logger LOG = Logger.getInstance(DefaultMyBatisXmlParser.class);
     private final Project project;
+
+    public static final Map<String, DefaultBatisParseResult> cache = new ConcurrentHashMap<>();
 
     /**
      * 构造函数
@@ -49,19 +52,18 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
      */
     @Override
     public MyBatisParseResult parse(XmlFile file) {
-        LOG.debug("开始解析MyBatis XML文件: " + file.getVirtualFile().getPath());
-
-        if (!isValidMyBatisFile(file)) {
-            LOG.warn("无效的MyBatis XML文件: " + file.getName());
-            throw new IllegalArgumentException("不是有效的MyBatis XML文件: " + file.getName());
-        }
-
-        // 执行更全面的解析，包括验证标签结构和属性
-        validateMapperStructure(file);
-
-        LOG.debug("MyBatis XML文件解析完成: " + file.getVirtualFile().getPath());
-        // 返回解析结果
-        return new DefaultBatisParseResult(file);
+        String path = file.getVirtualFile().getPath();
+        // 原子操作：若不存在则计算并放入缓存，避免重复解析
+        return cache.computeIfAbsent(path, k -> {
+            LOG.debug("开始解析MyBatis XML文件: " + path);
+            if (!isValidMyBatisFile(file)) {
+                LOG.warn("无效的MyBatis XML文件: " + file.getName());
+                throw new IllegalArgumentException("不是有效的MyBatis XML文件: " + file.getName());
+            }
+            validateMapperStructure(file);
+            LOG.debug("MyBatis XML文件解析完成: " + file.getVirtualFile().getPath());
+            return new DefaultBatisParseResult(file);
+        });
     }
 
     /**
@@ -216,15 +218,7 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
                         if (idAttr != null && idAttr.getValue() != null) {
                             String id = idAttr.getValue().trim();
                             if (!id.isEmpty()) {
-                                if (statementMap.containsKey(id)) {
-                                    statementMap.get(id).add(tag);
-                                } else {
-                                    ArrayList<XmlTag> xmlTagArrayList = new ArrayList<>();
-                                    xmlTagArrayList.add(tag);
-                                    statementMap.put(id, xmlTagArrayList);
-                                }
-
-
+                                statementMap.computeIfAbsent(id, k -> new ArrayList<>()).add(tag);
                                 LOG.debug("存储SQL语句: " + id + " (" + statementTag + ")，来自文件: " + file.getName());
                             }
                         }

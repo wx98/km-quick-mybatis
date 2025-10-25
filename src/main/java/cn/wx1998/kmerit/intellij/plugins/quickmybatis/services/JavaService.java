@@ -144,10 +144,6 @@ public class JavaService implements Serializable {
         }
     }
 
-    public JavaPsiFacade getJavaPsiFacade() {
-        return javaPsiFacade;
-    }
-
     public Project getProject() {
         return project;
     }
@@ -233,7 +229,8 @@ public class JavaService implements Serializable {
             LOG.debug("Method has no containing class");
             return;
         }
-        if (!psiClass.isInterface()){
+        boolean anInterface = psiClass.isInterface();
+        if (!anInterface) {
             return;
         }
         String qualifiedName = psiClass.getQualifiedName();
@@ -248,7 +245,7 @@ public class JavaService implements Serializable {
             MyBatisParseResult result = parser.parse(xmlFile);
             String namespace = result.getNamespace();
 
-            if (namespace != null && (namespace.equals(qualifiedName + "Mapper") || namespace.equals(qualifiedName))) {
+            if (namespace != null && namespace.equals(qualifiedName)) {
                 List<XmlTag> statementById = result.getStatementById(methodName);
                 if (statementById != null) {
                     for (XmlTag statement : statementById) {
