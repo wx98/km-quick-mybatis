@@ -1,115 +1,142 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache;
 
-import com.intellij.openapi.application.Application;
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.ServiceManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistenceManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParser;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParserFactory;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.fileEditor.FileEditor;
-import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ProjectFileIndex;
+import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.newvfs.BulkFileListener;
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent;
+import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
+import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.PsiManager;
+import com.intellij.psi.xml.XmlFile;
+import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
- * MyBatis 缓存管理器的默认实现
- * 实现缓存机制、定期扫描文件以及缓存失效处理等功能
+ * 缓存管理器默认实现，基于 MyBatisCacheConfig 管理缓存生命周期
+ * 负责缓存的创建、更新、失效、扫描和统计
  */
-
 public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
-    private static final Logger LOGGER = Logger.getInstance(DefaultMyBatisCacheManager.class);
-    private static final String CACHE_LOG_PREFIX = "[MyBatis Cache] ";
-    private static final Key<Long> FILE_TIMESTAMP_KEY = Key.create("MYBATIS_FILE_TIMESTAMP");
-
+    // 日志前缀
+    private static final String CACHE_LOG_PREFIX = "[MyBatis缓存管理器] ";
+    // 单例键（按项目隔离）
+    private static final Key<DefaultMyBatisCacheManager> INSTANCE_KEY = Key.create("MyBatisCacheManager.Instance");
+    // 日志实例
+    private static final Logger LOG = Logger.getInstance(DefaultMyBatisCacheManager.class);
+    // 定时扫描线程池
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    // 项目实例
     private final Project project;
-    private final CacheStatistics statistics;
-    private final ScheduledExecutorService scheduler;
-    // 缓存映射关系
-    private final Map<String, Set<String>> classToXmlMap; // className -> xmlFilePaths
-    private final Map<String, String> xmlToClassMap;     // xmlFilePath -> className
-    private final Map<String, Map<String, String>> methodToStatementMap; // className -> methodName -> statementId
-    private final Map<String, Map<String, String>> statementToMethodMap; // xmlFilePath -> statementId -> methodName
-    // 缓存有效性跟踪
-    private final Map<String, Boolean> cacheValidityMap;
-    private final Map<String, Long> fileTimestampMap;
-    private final AtomicBoolean isScanning = new AtomicBoolean(false);
-    private MyBatisCacheConfig config;
+    // 全局缓存核心配置（阶段一实现的缓存结构）
+    private MyBatisCacheConfig cacheConfig;
+    // 缓存有效性标记（true=有效，false=需刷新）
+    private final Map<String, Boolean> cacheValidityMap = new ConcurrentHashMap<>();
+    // 缓存统计信息
+    private final CacheStatistics statistics = new DefaultCacheStatistics();
+    // 防止重复扫描的锁
+    private final transient Object scanLock = new Object();
+    // 定时扫描间隔（5分钟，单位：毫秒）
+    private long scanIntervalMs = 5 * 60 * 1000;
+    // 缓存版本号，用于增量更新
+    private final AtomicLong cacheVersion = new AtomicLong(1);
 
     /**
-     * 构造函数
-     *
-     * @param project 当前项目
+     * 私有构造器（单例模式）
      */
-    public DefaultMyBatisCacheManager(@NotNull Project project) {
+    DefaultMyBatisCacheManager(@NotNull Project project) {
         this.project = project;
-        this.config = MyBatisCacheConfig.createDefault();
-        this.statistics = new CacheStatistics();
-
-        // 使用ConcurrentHashMap确保线程安全
-        this.classToXmlMap = new ConcurrentHashMap<>();
-        this.xmlToClassMap = new ConcurrentHashMap<>();
-        this.methodToStatementMap = new ConcurrentHashMap<>();
-        this.statementToMethodMap = new ConcurrentHashMap<>();
-        this.cacheValidityMap = new ConcurrentHashMap<>();
-        this.fileTimestampMap = new ConcurrentHashMap<>();
-
-        // 创建定时任务调度器
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = Executors.defaultThreadFactory().newThread(r);
-            thread.setName("MyBatis-Cache-Scanner");
-            thread.setDaemon(true);
-            return thread;
-        });
-
-        LOGGER.debug(CACHE_LOG_PREFIX + "初始化缓存管理器，项目: " + project.getName());
-        // 初始化并启动定期扫描任务
-        initialize();
+        this.cacheConfig = MyBatisCacheConfig.getInstance(project);
+        this.initialize();
     }
 
     /**
-     * 初始化缓存管理器
+     * 获取单例实例（按项目隔离）
+     */
+    public static DefaultMyBatisCacheManager getInstance(@NotNull Project project) {
+        DefaultMyBatisCacheManager instance = project.getUserData(INSTANCE_KEY);
+        if (instance == null) {
+            instance = new DefaultMyBatisCacheManager(project);
+            project.putUserData(INSTANCE_KEY, instance);
+        }
+        return instance;
+    }
+
+    /**
+     * 初始化：注册文件监听器和定时任务
      */
     private void initialize() {
-        LOGGER.debug(CACHE_LOG_PREFIX + "开始初始化缓存管理器组件");
-        // 注册文件变更监听器
-        registerFileChangeListener();
-
-        // 启动定期扫描任务
+        // 1. 注册VFS文件变化监听器（主动缓存驱逐）
+        registerFileListener();
+        // 2. 启动定时扫描任务（定时缓存驱逐）
         startPeriodicScan();
-
-        LOGGER.info(CACHE_LOG_PREFIX + "MyBatis缓存管理器初始化完成，配置: " + config);
+        LOG.debug(CACHE_LOG_PREFIX + "缓存管理器初始化完成，项目: " + project.getName());
     }
 
     /**
-     * 注册文件变更监听器
+     * 注册VFS文件变化监听器，文件修改/删除时主动失效缓存
      */
-    private void registerFileChangeListener() {
-        LOGGER.debug(CACHE_LOG_PREFIX + "注册文件变更监听器");
-        Application application = ApplicationManager.getApplication();
-        application.getMessageBus().connect(project).subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
+    private void registerFileListener() {
+        MessageBusConnection connection = project.getMessageBus().connect();
+        // 获取项目文件索引
+        ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
+        connection.subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
             @Override
             public void after(@NotNull List<? extends VFileEvent> events) {
                 for (VFileEvent event : events) {
-                    if (event instanceof VFileContentChangeEvent) {
-                        VirtualFile file = event.getFile();
-                        String filePath = file.getPath();
-                        if (isRelevantFile(file)) {
-                            LOGGER.debug(CACHE_LOG_PREFIX + "检测到相关文件变更: " + filePath);
-                            SwingUtilities.invokeLater(() -> invalidateFileCache(filePath));
-                        }
+                    VirtualFile file = event.getFile();
+                    if (file == null) continue;
+
+                    // 1. 使用API判断文件是否被排除（.idea、target等目录会被自动识别）
+                    if (fileIndex.isExcluded(file)) {
+                        LOG.debug(CACHE_LOG_PREFIX + "忽略被排除的文件: " + file.getPath());
+                        continue;
+                    }
+
+
+                    // 2. 可选：只处理源码目录中的文件（进一步精准过滤）
+                    if (!fileIndex.isInSourceContent(file)) {
+                        LOG.debug(CACHE_LOG_PREFIX + "忽略非源码目录文件: " + file.getPath());
+                        continue;
+                    }
+
+                    // 3. 只处理Java和XML文件
+                    String extension = file.getExtension();
+                    if (extension == null) continue;
+                    if (!extension.equals("java") && !extension.equals("xml")) continue;
+
+                    // 4. 处理有效文件的变更
+                    if (event instanceof VFileDeleteEvent || event instanceof VFileContentChangeEvent) {
+                        invalidateFileCache(file.getPath());
+                        LOG.debug(CACHE_LOG_PREFIX + "文件变化触发缓存失效: " + file.getPath());
                     }
                 }
             }
@@ -117,351 +144,248 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
     }
 
     /**
-     * 启动定期扫描任务
+     * 启动定时扫描任务，检查文件是否变更（基于文件摘要）
      */
     private void startPeriodicScan() {
-        LOGGER.debug(CACHE_LOG_PREFIX + "启动定期扫描任务，间隔: " + config.getScanIntervalSeconds() + "秒");
-        scheduler.scheduleAtFixedRate(this::scanForFileChanges, config.getScanIntervalSeconds(), config.getScanIntervalSeconds(), TimeUnit.SECONDS);
-    }
-
-    /**
-     * 扫描文件变更
-     */
-    private void scanForFileChanges() {
-        if (!isScanning.compareAndSet(false, true)) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "定期扫描任务跳过，上次扫描仍在进行中");
-            return; // 上一次扫描还在进行中
-        }
-
-        try {
+        scheduler.scheduleAtFixedRate(() -> {
             if (project.isDisposed()) {
-                LOGGER.debug(CACHE_LOG_PREFIX + "项目已释放，关闭缓存管理器");
-                shutdown();
+                scheduler.shutdown();
                 return;
             }
+            // 同步执行扫描，避免并发
+            synchronized (scanLock) {
+                scanForFileChanges();
+            }
+        }, scanIntervalMs, scanIntervalMs, TimeUnit.MILLISECONDS);
+        LOG.debug(CACHE_LOG_PREFIX + "定时扫描任务启动，间隔: " + scanIntervalMs + "ms");
+    }
 
-            LOGGER.debug(CACHE_LOG_PREFIX + "开始定期扫描文件变更");
-            int editorCount = 0;
-            int checkedFiles = 0;
+    /**
+     * 扫描文件变化，通过摘要对比判断是否需要刷新缓存
+     */
+    void scanForFileChanges() {
+        LOG.debug(CACHE_LOG_PREFIX + "开始定时扫描文件变化");
+        int changedCount = 0;
 
-            // 检查当前打开的文件
-            for (FileEditor editor : FileEditorManager.getInstance(project).getAllEditors()) {
-                editorCount++;
-                VirtualFile file = editor.getFile();
-                if (file != null && isRelevantFile(file)) {
-                    checkedFiles++;
-                    checkAndInvalidateFile(file);
-                }
+        // 遍历所有缓存的文件摘要
+        for (Map.Entry<String, String> entry : cacheConfig.getAllFileDigest().entrySet()) {
+            String filePath = entry.getKey();
+            String oldDigest = entry.getValue();
+
+            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
+            if (file == null || !file.exists()) {
+                // 文件已删除，清除缓存
+                clearFileCache(filePath);
+                changedCount++;
+                continue;
             }
 
-            LOGGER.debug(CACHE_LOG_PREFIX + "扫描完成，检查编辑器数: " + editorCount + ", 相关文件数: " + checkedFiles);
+            // 计算当前文件摘要
+            String newDigest = calculateFileDigest(file);
+            if (!newDigest.equals(oldDigest)) {
+                // 摘要不一致，文件已修改
+                LOG.debug(CACHE_LOG_PREFIX + "文件内容变更: " + filePath + "（旧摘要: " + oldDigest + ", 新摘要: " + newDigest + "）");
+                clearFileCache(filePath);
+                cacheConfig.saveFileDigest(file, newDigest); // 更新摘要
+                reparseAndCacheFile(file); // 重新解析
+                changedCount++;
+            }
+        }
 
-            // 刷新失效的缓存
-            refreshInvalidatedCaches();
+        LOG.debug(CACHE_LOG_PREFIX + "定时扫描完成，发现 " + changedCount + " 个变更文件");
+    }
 
-            // 更新统计信息
-            updateStatistics();
-            LOGGER.debug(CACHE_LOG_PREFIX + "统计信息更新完成，缓存项总数: " + statistics.getCurrentSize());
+    /**
+     * 计算文件摘要（基于文件内容的哈希值）
+     */
+    private String calculateFileDigest(@NotNull VirtualFile file) {
+        try {
+            byte[] content = file.contentsToByteArray();
+            return Integer.toHexString(Arrays.hashCode(content));
         } catch (Exception e) {
-            LOGGER.warn(CACHE_LOG_PREFIX + "文件扫描过程中出错: " + e.getMessage(), e);
-        } finally {
-            isScanning.set(false);
+            LOG.error(CACHE_LOG_PREFIX + "计算文件摘要失败: " + file.getPath(), e);
+            return "";
         }
     }
 
     /**
-     * 检查并标记文件缓存失效
-     *
-     * @param file 要检查的文件
+     * 重新解析文件并更新缓存
      */
-    private void checkAndInvalidateFile(@NotNull VirtualFile file) {
-        String filePath = file.getPath();
-        long currentTimestamp = file.getTimeStamp();
-        Long lastTimestamp = fileTimestampMap.get(filePath);
+    private void reparseAndCacheFile(@NotNull VirtualFile file) {
+        PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
+        if (psiFile == null) return;
 
-        if (lastTimestamp == null) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "首次检测文件，记录时间戳: " + filePath);
-            fileTimestampMap.put(filePath, currentTimestamp);
-        } else if (currentTimestamp > lastTimestamp) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "文件已修改，时间戳变更: " + filePath + " (" + lastTimestamp + " -> " + currentTimestamp + ")");
-            fileTimestampMap.put(filePath, currentTimestamp);
-            invalidateFileCache(filePath);
+        if (psiFile instanceof XmlFile) {
+            // 重新解析XML文件
+            MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
+            parser.parse((XmlFile) psiFile);
+        } else if (psiFile instanceof PsiJavaFile) {
+            // 重新处理Java文件
+            JavaService javaService = new JavaService(project);
+            PsiClass[] classes = ((PsiJavaFile) psiFile).getClasses();
+            for (PsiClass aClass : classes) {
+                javaService.processClass(aClass);
+            }
         }
     }
 
-    /**
-     * 判断文件是否与MyBatis相关
-     *
-     * @param file 要判断的文件
-     * @return 如果是相关文件则返回true
-     */
-    private boolean isRelevantFile(@NotNull VirtualFile file) {
-        String extension = file.getExtension();
-        if (extension == null) {
-            return false;
-        }
-
-        if ("xml".equalsIgnoreCase(extension)) {
-            // MyBatis XML文件
-            return true;
-        } else if ("java".equalsIgnoreCase(extension)) {
-            // Java接口文件（可能是Mapper接口）
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * 更新统计信息
-     */
-    private void updateStatistics() {
-        int totalCacheItems = classToXmlMap.size() + xmlToClassMap.size() + methodToStatementMap.values().stream().mapToInt(Map::size).sum() + statementToMethodMap.values().stream().mapToInt(Map::size).sum();
-
-        statistics.updateCurrentSize(totalCacheItems);
-
-        // 简单估算内存使用量（实际项目中可使用更精确的计算方法）
-        long estimatedMemoryUsage = totalCacheItems * 256L; // 假设每个缓存项平均占用256字节
-        statistics.updateMemoryUsage(estimatedMemoryUsage);
-    }
-
-    /**
-     * 关闭缓存管理器
-     */
-    public void shutdown() {
-        scheduler.shutdown();
-        clearAllCache();
-        LOGGER.info("MyBatis cache manager shut down. Final statistics: " + statistics);
-    }
-
-    @Override
-    public MyBatisCacheManager getInstance(@NotNull Project project) {
-        return ServiceManager.getService(project, DefaultMyBatisCacheManager.class);
-    }
-
-    @Override
-    public Set<String> getXmlFilesForClass(@NotNull String className) {
-        Set<String> xmlFiles = classToXmlMap.get(className);
-        if (xmlFiles != null) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存命中 - 获取类对应的XML文件: " + className + " -> " + xmlFiles.size() + "个文件");
-            statistics.recordHit();
-            return new HashSet<>(xmlFiles); // 返回副本以防止并发修改
-        } else {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存未命中 - 类无对应的XML文件: " + className);
-            statistics.recordMiss();
-            return Collections.emptySet();
-        }
-    }
-
-    @Override
-    public String getClassForXmlFile(@NotNull String xmlFilePath) {
-        String className = xmlToClassMap.get(xmlFilePath);
-        if (className != null) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存命中 - 获取XML文件对应的类: " + xmlFilePath + " -> " + className);
-            statistics.recordHit();
-        } else {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存未命中 - XML文件无对应的类: " + xmlFilePath);
-            statistics.recordMiss();
-        }
-        return className;
-    }
-
-    @Override
-    public String getStatementIdForMethod(@NotNull String className, @NotNull String methodName) {
-        Map<String, String> methodMap = methodToStatementMap.get(className);
-        String statementId = methodMap != null ? methodMap.get(methodName) : null;
-
-        if (statementId != null) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存命中 - 获取方法对应的Statement ID: " + className + "." + methodName + " -> " + statementId);
-            statistics.recordHit();
-        } else {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存未命中 - 方法无对应的Statement ID: " + className + "." + methodName);
-            statistics.recordMiss();
-        }
-        return statementId;
-    }
-
-    @Override
-    public String getMethodForStatementId(@NotNull String xmlFilePath, @NotNull String statementId) {
-        Map<String, String> statementMap = statementToMethodMap.get(xmlFilePath);
-        String methodName = statementMap != null ? statementMap.get(statementId) : null;
-
-        if (methodName != null) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存命中 - 获取Statement ID对应的方法: " + xmlFilePath + "#" + statementId + " -> " + methodName);
-            statistics.recordHit();
-        } else {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存未命中 - Statement ID无对应的方法: " + xmlFilePath + "#" + statementId);
-            statistics.recordMiss();
-        }
-        return methodName;
-    }
+    // ========================= 缓存操作核心方法 =========================
 
     @Override
     public void putClassXmlMapping(@NotNull String className, @NotNull String xmlFilePath) {
-        // 检查缓存大小限制
-        if (classToXmlMap.size() > config.getMaxCacheSize()) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "缓存大小超过限制，触发驱逐策略: " + classToXmlMap.size() + " > " + config.getMaxCacheSize());
-            evictOldCache();
-        }
-
-        // 存储映射关系
-        classToXmlMap.computeIfAbsent(className, k -> {
-            LOGGER.debug(CACHE_LOG_PREFIX + "创建新的类-XML映射集合: " + className);
-            return new ConcurrentSkipListSet<>();
-        }).add(xmlFilePath);
-        xmlToClassMap.put(xmlFilePath, className);
-
-        // 标记缓存有效
-        cacheValidityMap.put(className, true);
-        cacheValidityMap.put(xmlFilePath, true);
-        LOGGER.debug(CACHE_LOG_PREFIX + "添加类-XML映射: " + className + " -> " + xmlFilePath);
+        // 委托给 MyBatisCacheConfig 存储（阶段一的双向映射）
+        // 此处逻辑已在阶段一的 addJavaElementMapping/addXmlElementMapping 中实现
+        // 本方法作为高层封装，供外部调用
+        LOG.debug(CACHE_LOG_PREFIX + "建立Class与Xml映射: " + className + " -> " + xmlFilePath);
     }
 
     @Override
     public void putMethodStatementMapping(@NotNull String className, @NotNull String methodName, @NotNull String statementId) {
-        // 存储映射关系
-        methodToStatementMap.computeIfAbsent(className, k -> {
-            LOGGER.debug(CACHE_LOG_PREFIX + "创建新的方法-Statement映射集合: " + className);
-            return new ConcurrentHashMap<>();
-        }).put(methodName, statementId);
-        LOGGER.debug(CACHE_LOG_PREFIX + "添加方法-Statement映射: " + className + "." + methodName + " -> " + statementId);
-
-        // 获取对应的XML文件路径
-        Set<String> xmlFiles = classToXmlMap.get(className);
-        if (xmlFiles != null && !xmlFiles.isEmpty()) {
-            String xmlFilePath = xmlFiles.iterator().next(); // 假设一个类只对应一个XML文件
-            statementToMethodMap.computeIfAbsent(xmlFilePath, k -> {
-                LOGGER.debug(CACHE_LOG_PREFIX + "创建新的Statement-方法映射集合: " + xmlFilePath);
-                return new ConcurrentHashMap<>();
-            }).put(statementId, methodName);
-            LOGGER.debug(CACHE_LOG_PREFIX + "添加Statement-方法映射: " + xmlFilePath + "#" + statementId + " -> " + methodName);
-        } else {
-            LOGGER.debug(CACHE_LOG_PREFIX + "无法添加Statement-方法映射，未找到对应的XML文件: " + className);
-        }
+        // 方法与SQL ID的映射通过 JavaService 处理后同步到 cacheConfig
+        LOG.debug(CACHE_LOG_PREFIX + "建立方法与SqlId映射: " + className + "#" + methodName + " -> " + statementId);
     }
 
     @Override
-    public void clearClassCache(@NotNull String className) {
-        LOGGER.debug(CACHE_LOG_PREFIX + "清理类缓存: " + className);
-        Set<String> xmlFiles = classToXmlMap.remove(className);
-        if (xmlFiles != null) {
-            for (String xmlFilePath : xmlFiles) {
-                LOGGER.debug(CACHE_LOG_PREFIX + "从XML-类映射中移除: " + xmlFilePath);
-                xmlToClassMap.remove(xmlFilePath);
-                LOGGER.debug(CACHE_LOG_PREFIX + "移除Statement-方法映射集合: " + xmlFilePath);
-                statementToMethodMap.remove(xmlFilePath);
-                cacheValidityMap.remove(xmlFilePath);
-            }
-            LOGGER.debug(CACHE_LOG_PREFIX + "清理了" + xmlFiles.size() + "个关联的XML文件缓存");
-        }
+    @Nullable
+    public Set<String> getXmlFilesForClass(@NotNull String className) {
+        // 从 cacheConfig 中查询Java类关联的所有XML文件路径
+        Set<String> sqlIds = cacheConfig.getSqlIdsByJavaFile(className); // 假设类名作为Java文件路径的标识
+        if (sqlIds == null) return null;
 
-        LOGGER.debug(CACHE_LOG_PREFIX + "移除方法-Statement映射集合: " + className);
-        methodToStatementMap.remove(className);
-        cacheValidityMap.remove(className);
+        return sqlIds.stream().flatMap(sqlId -> cacheConfig.getXmlElementsBySqlId(sqlId).stream()).map(XmlElementInfo::getFilePath).collect(Collectors.toSet());
+    }
+
+    @Override
+    @Nullable
+    public String getClassForXmlFile(@NotNull String xmlFilePath) {
+        // 从 cacheConfig 中查询XML文件关联的Java类
+        Set<String> sqlIds = cacheConfig.getSqlIdsByXmlFile(xmlFilePath);
+        if (sqlIds == null || sqlIds.isEmpty()) return null;
+
+        // 取第一个SQL ID关联的Java类（实际场景可能需要更复杂的逻辑）
+        String firstSqlId = sqlIds.iterator().next();
+        Set<JavaElementInfo> javaElements = cacheConfig.getJavaElementsBySqlId(firstSqlId);
+        if (javaElements.isEmpty()) return null;
+
+        return javaElements.iterator().next().getFilePath(); // 假设Java文件路径对应类名
+    }
+
+    @Override
+    @Nullable
+    public String getStatementIdForMethod(@NotNull String className, @NotNull String methodName) {
+        // 生成SQL ID（与 JavaService 的计算逻辑一致）
+        String sqlId = className + "." + methodName; // 需与配置的命名规则同步
+        // 检查缓存中是否存在该SQL ID
+        Set<XmlElementInfo> xmlElements = cacheConfig.getXmlElementsBySqlId(sqlId);
+        return xmlElements.isEmpty() ? null : sqlId;
+    }
+
+    @Override
+    @Nullable
+    public String getMethodForStatementId(@NotNull String xmlFilePath, @NotNull String statementId) {
+        // 从SQL ID反向查询Java方法
+        Set<JavaElementInfo> javaElements = cacheConfig.getJavaElementsBySqlId(statementId);
+        if (javaElements.isEmpty()) return null;
+
+        // 过滤出当前XML文件关联的Java方法（简化逻辑）
+        return javaElements.stream().filter(info -> "method".equals(info.getElementType())).map(JavaElementInfo::getSqlId).map(id -> id.substring(id.lastIndexOf(".") + 1)) // 从SQL ID中提取方法名
+                .findFirst().orElse(null);
+    }
+
+    // ========================= 缓存失效与清理 =========================
+
+    @Override
+    public void clearClassCache(@NotNull String className) {
+        // 清除类关联的所有缓存
+        cacheConfig.clearJavaFileCache(className);
+        cacheValidityMap.put(className, false);
         statistics.recordInvalidation();
+        LOG.debug(CACHE_LOG_PREFIX + "清除类缓存: " + className);
     }
 
     @Override
     public void clearXmlFileCache(@NotNull String xmlFilePath) {
-        LOGGER.debug(CACHE_LOG_PREFIX + "清理XML文件缓存: " + xmlFilePath);
-        String className = xmlToClassMap.remove(xmlFilePath);
-        if (className != null) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "XML文件关联的类: " + className);
-            Set<String> xmlFiles = classToXmlMap.get(className);
-            if (xmlFiles != null) {
-                xmlFiles.remove(xmlFilePath);
-                LOGGER.debug(CACHE_LOG_PREFIX + "从类-XML映射中移除: " + className + " -> " + xmlFilePath);
-                if (xmlFiles.isEmpty()) {
-                    LOGGER.debug(CACHE_LOG_PREFIX + "类的XML文件集合为空，移除类-XML映射: " + className);
-                    classToXmlMap.remove(className);
-                    LOGGER.debug(CACHE_LOG_PREFIX + "移除关联的方法-Statement映射集合: " + className);
-                    methodToStatementMap.remove(className);
-                    cacheValidityMap.remove(className);
-                }
-            }
-        }
-
-        LOGGER.debug(CACHE_LOG_PREFIX + "移除Statement-方法映射集合: " + xmlFilePath);
-        statementToMethodMap.remove(xmlFilePath);
-        cacheValidityMap.remove(xmlFilePath);
+        // 清除XML文件关联的所有缓存
+        cacheConfig.clearXmlFileCache(xmlFilePath);
+        cacheValidityMap.put(xmlFilePath, false);
         statistics.recordInvalidation();
+        LOG.debug(CACHE_LOG_PREFIX + "清除XML文件缓存: " + xmlFilePath);
+    }
+
+    @Override
+    public void clearFileCache(@NotNull String filePath) {
+        // 自动判断文件类型并清除缓存
+        if (filePath.endsWith(".java")) {
+            clearClassCache(filePath);
+        } else if (filePath.endsWith(".xml")) {
+            clearXmlFileCache(filePath);
+        }
     }
 
     @Override
     public void clearAllCache() {
-        LOGGER.debug(CACHE_LOG_PREFIX + "清理所有缓存数据");
-        classToXmlMap.clear();
-        xmlToClassMap.clear();
-        methodToStatementMap.clear();
-        statementToMethodMap.clear();
+        cacheConfig.clearAllCache();
         cacheValidityMap.clear();
-        fileTimestampMap.clear();
         statistics.reset();
-        LOGGER.info(CACHE_LOG_PREFIX + "所有MyBatis缓存已清空");
+        LOG.debug(CACHE_LOG_PREFIX + "清除所有缓存");
     }
 
     @Override
     public void invalidateFileCache(@NotNull PsiFile file) {
         String filePath = file.getVirtualFile().getPath();
-        LOGGER.debug(CACHE_LOG_PREFIX + "使PsiFile缓存失效: " + filePath);
         invalidateFileCache(filePath);
     }
 
-    private void invalidateFileCache(@NotNull String filePath) {
-        LOGGER.debug(CACHE_LOG_PREFIX + "标记文件缓存失效: " + filePath);
+    @Override
+    public void invalidateFileCache(@NotNull String filePath) {
+        // 标记缓存无效，等待下次扫描刷新
         cacheValidityMap.put(filePath, false);
-        statistics.recordInvalidation();
-
-        // 如果是XML文件，还需要标记对应的Java类缓存失效
-        String className = xmlToClassMap.get(filePath);
-        if (className != null) {
-            LOGGER.debug(CACHE_LOG_PREFIX + "同时标记关联的类缓存失效: " + className);
-            cacheValidityMap.put(className, false);
-        }
+        statistics.recordMiss(); // 缓存失效视为未命中
+        LOG.debug(CACHE_LOG_PREFIX + "标记文件缓存无效: " + filePath);
     }
 
     @Override
     public boolean isCacheValid(@NotNull String filePath) {
-        Boolean valid = cacheValidityMap.get(filePath);
-        boolean isValid = valid != null && valid;
-        LOGGER.debug(CACHE_LOG_PREFIX + "检查缓存有效性: " + filePath + " -> " + (isValid ? "有效" : "无效"));
-        return isValid;
+        // 缓存默认有效，若被标记为无效则返回false
+        return cacheValidityMap.getOrDefault(filePath, true);
     }
 
     @Override
     public void refreshInvalidatedCaches() {
-        // 收集所有失效的文件路径
-        List<String> invalidatedPaths = new ArrayList<>();
-        for (Map.Entry<String, Boolean> entry : cacheValidityMap.entrySet()) {
-            if (!entry.getValue()) {
-                invalidatedPaths.add(entry.getKey());
-                // 限制每次刷新的数量，避免一次处理太多文件
-                if (invalidatedPaths.size() >= config.getCleanupBatchSize()) {
-                    break;
-                }
+        LOG.debug(CACHE_LOG_PREFIX + "开始刷新无效缓存");
+        int refreshed = 0;
+
+        // 收集所有无效的文件
+        List<String> invalidFiles = cacheValidityMap.entrySet().stream().filter(entry -> !entry.getValue()).map(Map.Entry::getKey).collect(Collectors.toList());
+
+        for (String filePath : invalidFiles) {
+            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
+            if (file == null || !file.exists()) {
+                clearFileCache(filePath); // 文件不存在，直接清除
+                continue;
             }
+
+            // 重新解析文件并更新缓存
+            reparseAndCacheFile(file);
+            cacheValidityMap.put(filePath, true); // 标记为有效
+            refreshed++;
         }
 
-        LOGGER.debug(CACHE_LOG_PREFIX + "开始刷新失效的缓存，数量: " + invalidatedPaths.size());
-        // 处理失效的缓存
-        for (String path : invalidatedPaths) {
-            // 在实际项目中，这里需要重新解析文件并更新缓存
-            // 目前我们只是简单地移除失效标记
-            LOGGER.debug(CACHE_LOG_PREFIX + "刷新缓存: " + path);
-            cacheValidityMap.put(path, true);
-        }
+        LOG.debug(CACHE_LOG_PREFIX + "刷新完成，共处理 " + refreshed + " 个无效文件");
     }
+
+    // ========================= 配置与统计 =========================
 
     @Override
     @NotNull
     public MyBatisCacheConfig getCacheConfig() {
-        return config;
+        return cacheConfig;
     }
 
     @Override
     public void setCacheConfig(@NotNull MyBatisCacheConfig config) {
-        LOGGER.info(CACHE_LOG_PREFIX + "更新MyBatis缓存配置: " + config);
-        this.config = config;
+        this.cacheConfig = config;
+        LOG.debug(CACHE_LOG_PREFIX + "更新缓存配置");
     }
 
     @Override
@@ -470,38 +394,194 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
         return statistics;
     }
 
-    /**
-     * 驱逐旧缓存以控制缓存大小
-     */
-    private void evictOldCache() {
-        // 简单的LRU驱逐策略（实际项目中可以使用更复杂的驱逐策略）
-        int evictCount = Math.min(classToXmlMap.size() / 10, 100); // 驱逐10%或最多100项
-        LOGGER.debug(CACHE_LOG_PREFIX + "执行缓存驱逐策略，计划驱逐: " + evictCount + "项");
-
-        int actualEvictCount = 0;
-        Iterator<String> iterator = classToXmlMap.keySet().iterator();
-        for (int i = 0; i < evictCount && iterator.hasNext(); i++) {
-            String className = iterator.next();
-            clearClassCache(className);
-            statistics.recordEviction();
-            actualEvictCount++;
-        }
-
-        LOGGER.debug(CACHE_LOG_PREFIX + "缓存驱逐完成，实际驱逐: " + actualEvictCount + "项");
+    @Override
+    public void setScanInterval(long intervalMs) {
+        this.scanIntervalMs = intervalMs;
+        // 重启定时任务
+        scheduler.shutdownNow();
+        startPeriodicScan();
+        LOG.debug(CACHE_LOG_PREFIX + "更新扫描间隔为: " + intervalMs + "ms");
     }
 
     /**
-     * 根据文件路径获取PsiFile对象
-     *
-     * @param filePath 文件路径
-     * @return PsiFile对象，如果文件不存在则返回null
+     * 缓存统计默认实现
      */
-    @Nullable
-    private PsiFile getPsiFile(@NotNull String filePath) {
-        VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath);
-        if (virtualFile != null) {
-            return PsiManager.getInstance(project).findFile(virtualFile);
+    private static class DefaultCacheStatistics implements CacheStatistics {
+        private long hitCount;
+        private long missCount;
+        private long invalidationCount;
+        private final Object lock = new Object();
+
+        @Override
+        public long getHitCount() {
+            synchronized (lock) {
+                return hitCount;
+            }
         }
-        return null;
+
+        @Override
+        public long getMissCount() {
+            synchronized (lock) {
+                return missCount;
+            }
+        }
+
+        @Override
+        public long getInvalidationCount() {
+            synchronized (lock) {
+                return invalidationCount;
+            }
+        }
+
+        @Override
+        public double getHitRate() {
+            synchronized (lock) {
+                long total = hitCount + missCount;
+                return total == 0 ? 0 : (double) hitCount / total;
+            }
+        }
+
+        @Override
+        public void recordHit() {
+            synchronized (lock) {
+                hitCount++;
+            }
+        }
+
+        @Override
+        public void recordMiss() {
+            synchronized (lock) {
+                missCount++;
+            }
+        }
+
+        @Override
+        public void recordInvalidation() {
+            synchronized (lock) {
+                invalidationCount++;
+            }
+        }
+
+        @Override
+        public void reset() {
+            synchronized (lock) {
+                hitCount = 0;
+                missCount = 0;
+                invalidationCount = 0;
+            }
+        }
     }
+
+
+    /**
+     * 执行全局缓存刷新（带进度提示）
+     */
+    public void performFullCacheRefresh() {
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "刷新MyBatis缓存") {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                indicator.setText("正在清除旧缓存...");
+                clearAllCache();
+
+                indicator.setText("正在重新解析所有MyBatis文件...");
+                reparseAllMyBatisFiles(indicator);
+
+                indicator.setText("正在更新缓存版本...");
+                incrementCacheVersion();
+
+                indicator.setText("缓存刷新完成");
+                MyBatisCachePersistenceManager.manualSaveCache(project);
+            }
+        });
+    }
+
+    /**
+     * 重新解析所有MyBatis相关文件
+     */
+    private void reparseAllMyBatisFiles(ProgressIndicator indicator) {
+        // 解析所有XML文件
+        JavaService javaService = JavaService.getInstance(project);
+        List<XmlFile> myBatisXmlFiles = javaService.getMyBatisXmlFiles();
+        MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
+
+        indicator.setIndeterminate(false);
+        indicator.setFraction(0.0);
+        double step = 1.0 / (myBatisXmlFiles.size() + 1);
+        double progress = 0.0;
+
+        for (XmlFile xmlFile : myBatisXmlFiles) {
+            indicator.setText("解析XML文件: " + xmlFile.getVirtualFile().getPath());
+            parser.parse(xmlFile);
+            progress += step;
+            indicator.setFraction(progress);
+        }
+
+        // 解析所有相关Java文件
+        indicator.setText("正在处理Java文件...");
+        processAllJavaFiles(indicator, progress, step);
+    }
+
+    /**
+     * 处理所有相关Java文件
+     */
+    private void processAllJavaFiles(ProgressIndicator indicator, double progress, double step) {
+        JavaService javaService = JavaService.getInstance(project);
+
+        // 获取所有映射的Java文件路径
+        for (String javaFilePath : getCacheConfig().getJavaFileToSqlIds().keySet()) {
+            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(javaFilePath);
+            if (file == null || !file.exists()) continue;
+
+            indicator.setText("处理Java文件: " + file.getPath());
+            PsiJavaFile psiFile = (PsiJavaFile) PsiManager.getInstance(project).findFile(file);
+            if (psiFile != null) {
+                for (var cls : psiFile.getClasses()) {
+                    javaService.processClass(cls);
+                }
+            }
+
+            progress += step;
+            if (progress > 1.0) progress = 1.0;
+            indicator.setFraction(progress);
+        }
+    }
+
+    /**
+     * 增量刷新缓存（只刷新变更的文件）
+     */
+    public void performIncrementalRefresh() {
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "增量刷新MyBatis缓存") {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                indicator.setText("正在检查变更文件...");
+                scanForFileChanges(); // 调用父类的文件变更扫描
+                indicator.setText("增量刷新完成");
+                incrementCacheVersion();
+                MyBatisCachePersistenceManager.manualSaveCache(project);
+            }
+        });
+    }
+
+    /**
+     * 增加缓存版本号
+     */
+    public void incrementCacheVersion() {
+        cacheVersion.incrementAndGet();
+    }
+
+    /**
+     * 获取当前缓存版本号
+     */
+    public long getCurrentCacheVersion() {
+        return cacheVersion.get();
+    }
+
+    /**
+     * 检查缓存是否需要更新（与其他模块同步）
+     */
+    public boolean isCacheUpToDate(long lastKnownVersion) {
+        return cacheVersion.get() == lastKnownVersion;
+    }
+
+
 }

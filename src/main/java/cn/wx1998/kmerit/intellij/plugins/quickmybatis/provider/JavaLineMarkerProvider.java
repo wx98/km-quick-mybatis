@@ -39,7 +39,8 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
     // 定义一个工厂方法来创建过滤器
     private AbstractElementFilter createFilter(Object element) {
         for (Map.Entry<Class<?>, Supplier<AbstractElementFilter>> entry : filterMap.entrySet()) {
-            if (entry.getKey().isInstance(element)) return entry.getValue().get();
+            if (entry.getKey().isInstance(element))
+                return entry.getValue().get();
         }
         return new EmptyAbstractElementFilter();
     }
@@ -50,7 +51,7 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
         protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
             // 收集与PsiClass相关的Mapper节点
             CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
-            JavaService.getInstance(element.getProject()).processClass((PsiClass) element, processor);
+            JavaService.getInstance(element.getProject()).processClass((PsiClass) element);
             return processor.getResults();
         }
     }
@@ -60,7 +61,7 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
         protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
             // 收集与PsiMethod相关的ID DOM元素节点
             CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
-            JavaService.getInstance(element.getProject()).processMethod(((PsiMethod) element), processor);
+            JavaService.getInstance(element.getProject()).processMethod(((PsiMethod) element));
             return processor.getResults();
         }
     }
@@ -70,7 +71,7 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
         @Override
         protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
             CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
-            JavaService.getInstance(element.getProject()).processField((PsiField) element, processor);
+            JavaService.getInstance(element.getProject()).processField((PsiField) element);
             return processor.getResults();
         }
     }
@@ -79,7 +80,7 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
         @Override
         protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
             CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
-            JavaService.getInstance(element.getProject()).processMethodCall(((PsiMethodCallExpression) element), processor);
+            JavaService.getInstance(element.getProject()).processMethodCall(((PsiMethodCallExpression) element));
             return processor.getResults();
         }
     }

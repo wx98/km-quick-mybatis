@@ -18,7 +18,9 @@ public interface MyBatisCacheManager {
      * @param project 当前项目
      * @return 缓存管理器实例
      */
-    MyBatisCacheManager getInstance(@NotNull Project project);
+    static MyBatisCacheManager getInstance(@NotNull Project project) {
+        return null;
+    }
 
     /**
      * 获取Java类与XML文件的映射关系
@@ -85,6 +87,8 @@ public interface MyBatisCacheManager {
      */
     void clearXmlFileCache(@NotNull String xmlFilePath);
 
+    public void clearFileCache(@NotNull String filePath);
+
     /**
      * 清除所有缓存
      */
@@ -96,7 +100,7 @@ public interface MyBatisCacheManager {
      * @param file 要标记失效的文件
      */
     void invalidateFileCache(@NotNull PsiFile file);
-
+    void invalidateFileCache(@NotNull String filePath);
     /**
      * 检查文件缓存是否有效
      *
@@ -130,4 +134,6 @@ public interface MyBatisCacheManager {
      * @return 缓存统计信息
      */
     @NotNull CacheStatistics getCacheStatistics();
+
+    void setScanInterval(long intervalMs);
 }
