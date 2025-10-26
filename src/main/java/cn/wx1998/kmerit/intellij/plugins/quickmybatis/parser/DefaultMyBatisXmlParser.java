@@ -1,7 +1,13 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser;
 
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.DefaultMyBatisCacheManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheConfig;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.xml.XmlAttribute;
 import com.intellij.psi.xml.XmlDocument;
 import com.intellij.psi.xml.XmlFile;
@@ -13,14 +19,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 默认MyBatis XML解析器实现类
- * 提供比默认解析器更全面的解析功能，使用MyBatisXmlStructure进行标签验证和结构分析
+ * 整合全局缓存，解析结果同步到MyBatisCacheConfig
  */
 public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
 
     private static final Logger LOG = Logger.getInstance(DefaultMyBatisXmlParser.class);
     private final Project project;
-
-    public static final Map<String, DefaultBatisParseResult> cache = new ConcurrentHashMap<>();
+    private final MyBatisCacheConfig cacheConfig; // 全局缓存管理器
 
     /**
      * 构造函数
@@ -29,6 +34,7 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
      */
     public DefaultMyBatisXmlParser(Project project) {
         this.project = project;
+        this.cacheConfig = MyBatisCacheConfig.getInstance(project); // 初始化全局缓存
         LOG.debug("为项目初始化默认MyBatis XML解析器: " + project.getName());
     }
 
@@ -36,15 +42,15 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
      * 创建默认MyBatisXmlParser实例的工厂方法
      *
      * @param project 当前项目实例
-     * @return EnhancedMyBatisXmlParser实例
+     * @return DefaultMyBatisXmlParser 实例
      */
     public static MyBatisXmlParser create(@NotNull Project project) {
-        LOG.debug("创建EnhancedMyBatisXmlParser实例");
+        LOG.debug("创建 DefaultMyBatisXmlParser 实例");
         return new DefaultMyBatisXmlParser(project);
     }
 
     /**
-     * 解析MyBatis XML文件
+     * 解析MyBatis XML文件（核心方法）
      *
      * @param file 需要解析的XML文件
      * @return 解析结果对象
@@ -53,17 +59,25 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
     @Override
     public MyBatisParseResult parse(XmlFile file) {
         String path = file.getVirtualFile().getPath();
-        // 原子操作：若不存在则计算并放入缓存，避免重复解析
-        return cache.computeIfAbsent(path, k -> {
-            LOG.debug("开始解析MyBatis XML文件: " + path);
-            if (!isValidMyBatisFile(file)) {
-                LOG.warn("无效的MyBatis XML文件: " + file.getName());
-                throw new IllegalArgumentException("不是有效的MyBatis XML文件: " + file.getName());
-            }
-            validateMapperStructure(file);
-            LOG.debug("MyBatis XML文件解析完成: " + file.getVirtualFile().getPath());
-            return new DefaultBatisParseResult(file);
-        });
+        LOG.debug("开始解析MyBatis XML文件: " + path);
+
+        // 验证文件有效性
+        boolean isValid = isValidMyBatisFile(file);
+        if (!isValid) {
+            LOG.warn("无效的MyBatis XML文件: " + file.getName());
+            throw new IllegalArgumentException("不是有效的MyBatis XML文件: " + file.getName());
+        }
+
+        // 验证结构并解析标签（同步到全局缓存）
+        ReadAction.run(() -> validateMapperStructure(file));
+
+        // 创建解析结果
+        DefaultBatisParseResult result = ReadAction.compute(() -> new DefaultBatisParseResult(file));
+
+        LOG.debug("MyBatis XML文件解析完成: " + path);
+        syncToCacheManager(file, result);
+        LOG.debug("MyBatis XML同步到缓存完成: " + path);
+        return result;
     }
 
     /**
@@ -75,7 +89,8 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
     @Override
     public boolean isValidMyBatisFile(XmlFile file) {
         LOG.debug("验证文件是否为有效的MyBatis文件: " + file.getName());
-
+        // 所有Psi操作包裹在ReadAction.compute中，返回布尔结果
+        return ReadAction.compute(() -> {
         // 首先检查根标签是否为 mapper
         XmlDocument document = file.getDocument();
         if (document == null) {
@@ -99,17 +114,23 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
 
         LOG.debug("文件验证为有效的MyBatis文件: " + file.getName() + "，命名空间: " + namespaceAttr.getValue());
         return true;
+        });
     }
 
     /**
-     * 验证Mapper文件结构的有效性
+     * 验证Mapper文件结构的有效性，并同步标签信息到全局缓存
      *
      * @param file 需要验证的Mapper XML文件
      */
     private void validateMapperStructure(XmlFile file) {
         LOG.debug("验证Mapper文件结构: " + file.getName());
-
-        XmlTag rootTag = file.getDocument().getRootTag();
+        ReadAction.run(() -> {
+            XmlDocument document = file.getDocument();
+            if (document == null) {
+                LOG.debug("文件没有XML文档结构: " + file.getName());
+                return;
+            }
+            XmlTag rootTag = document.getRootTag();
         if (rootTag == null) {
             LOG.debug("文件没有根标签: " + file.getName());
             return;
@@ -133,7 +154,7 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
                 continue;
             }
 
-            // 验证 SQL 语句标签的属性
+            // 验证并同步SQL语句标签（select/insert/update/delete）
             if (MyBatisXmlStructure.isStatementTag(tagName)) {
                 validateStatementTag(tag, tagName);
                 statementCount++;
@@ -143,6 +164,7 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
         }
 
         LOG.debug("文件结构验证完成: " + file.getName() + "，语句数量: " + statementCount + "，SQL片段数量: " + sqlFragmentCount + "，不支持标签数量: " + unsupportedCount);
+        });
     }
 
     /**
@@ -153,6 +175,7 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
      */
     private void validateStatementTag(XmlTag tag, String tagName) {
         // 检查是否有id属性
+        ReadAction.run(() -> {
         XmlAttribute idAttr = tag.getAttribute("id");
         if (idAttr == null || idAttr.getValue() == null || idAttr.getValue().trim().isEmpty()) {
             LOG.warn("SQL语句标签缺少id属性: " + tagName + "，文件名: " + tag.getContainingFile().getName());
@@ -170,31 +193,53 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
                 LOG.warn("不支持的属性: " + attrName + " 用于 " + tagName + "标签，文件名: " + tag.getContainingFile().getName());
             }
         }
+        });
+    }
+    /**
+     * 同步解析结果到缓存管理器
+     */
+    private void syncToCacheManager(XmlFile file, MyBatisParseResult result) {
+        // 仅获取路径和命名空间
+        String xmlFilePath = ReadAction.compute(() -> file.getVirtualFile().getPath());
+        String namespace = result.getNamespace();
+
+        MyBatisCacheManager cacheManager = DefaultMyBatisCacheManager.getInstance(file.getProject());
+        // 建立类与XML的映射
+        cacheManager.putClassXmlMapping(namespace, xmlFilePath);
+
+        // 建立方法与StatementId的映射
+        Map<String, List<XmlTag>> statements = result.getStatements();
+        for (Map.Entry<String, List<XmlTag>> entry : statements.entrySet()) {
+            String statementId = entry.getKey();
+            // 解析出方法名 (假设statementId为"方法名"或"namespace.方法名")
+            String methodName = statementId.contains(".") ?
+                    statementId.substring(statementId.lastIndexOf(".") + 1) :
+                    statementId;
+            cacheManager.putMethodStatementMapping(namespace, methodName, statementId);
+        }
     }
 
     /**
      * 默认MyBatis解析结果实现类
-     * 提供对解析结果的全面访问和管理功能
+     * 解析XML标签并同步到全局缓存
      */
-    private static class DefaultBatisParseResult implements MyBatisParseResult {
+    private class DefaultBatisParseResult implements MyBatisParseResult {
 
         private final XmlFile file;
-        private final Map<String, List<XmlTag>> statementMap = new HashMap<>();
-        private final Map<String, XmlTag> sqlFragmentMap = new HashMap<>();
-        private final Map<String, XmlTag> resultMap = new HashMap<>();
+        private final Map<String, List<XmlTag>> statementMap = new ConcurrentHashMap<>();
+        private final Map<String, XmlTag> sqlFragmentMap = new ConcurrentHashMap<>();
+        private final Map<String, XmlTag> resultMap = new ConcurrentHashMap<>();
 
         public DefaultBatisParseResult(XmlFile file) {
             this.file = file;
-            // 初始化映射
-            initializeMaps();
+            initializeMaps(); // 解析并同步缓存
         }
 
         /**
-         * 初始化内部映射集合
-         * 解析XML文件中的所有SQL语句标签
+         * 初始化内部映射集合，同时同步到全局缓存
          */
         private void initializeMaps() {
-            LOG.debug("在EnhancedMyBatisXmlParser中初始化映射，文件: " + (file != null ? file.getName() : "空文件"));
+            LOG.debug("初始化XML解析结果映射，文件: " + (file != null ? file.getName() : "空文件"));
 
             // 直接从 XML 文件解析以避免空指针异常
             if (file != null) {
@@ -203,50 +248,88 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
         }
 
         /**
-         * 直接从XML文件解析内容，避免空指针异常
+         * 直接从XML文件解析内容，同步到本地集合和全局缓存
          */
         private void parseXmlFileDirectly() {
             LOG.debug("直接从XML文件解析内容: " + file.getName());
+            // 1. 获取XML路径
+            String xmlFilePath = file.getVirtualFile().getPath();
 
             XmlTag rootTag = file.getDocument().getRootTag();
-            if (rootTag != null) {
-                // 查找所有 SQL 语句标签
-                for (String statementTag : MyBatisXmlStructure.STATEMENT_TAGS) {
-                    XmlTag[] statementTags = rootTag.findSubTags(statementTag);
-                    for (XmlTag tag : statementTags) {
-                        XmlAttribute idAttr = tag.getAttribute("id");
-                        if (idAttr != null && idAttr.getValue() != null) {
-                            String id = idAttr.getValue().trim();
-                            if (!id.isEmpty()) {
-                                statementMap.computeIfAbsent(id, k -> new ArrayList<>()).add(tag);
-                                LOG.debug("存储SQL语句: " + id + " (" + statementTag + ")，来自文件: " + file.getName());
-                            }
-                        }
-                    }
-                }
+            if (rootTag == null) return;
 
-                // 查找所有 SQL 片段
-                XmlTag[] sqlTags = rootTag.findSubTags(MyBatisXmlStructure.SQL_TAG);
-                for (XmlTag tag : sqlTags) {
-                    XmlAttribute idAttr = tag.getAttribute("id");
-                    if (idAttr != null && idAttr.getValue() != null) {
-                        String id = idAttr.getValue().trim();
-                        if (!id.isEmpty()) {
-                            // 直接存储 XML 标签
-                            sqlFragmentMap.put(id, tag);
-                            LOG.debug("存储SQL片段: " + id + "，来自文件: " + file.getName());
-                        }
-                    }
-                }
+            // 获取文档对象，用于计算行号
+            PsiDocumentManager psiDocManager = PsiDocumentManager.getInstance(project);
+            var document = psiDocManager.getDocument(file);
+            if (document == null) {
+                LOG.warn("无法获取XML文件的文档对象: " + file.getName());
+                return;
+            }
 
-                // 查找所有 resultMap 片段
-                XmlTag[] resultTags = rootTag.findSubTags(MyBatisXmlStructure.RESULT_MAP_TAG);
-                for (XmlTag tag : resultTags) {
+            // 1. 解析SQL语句标签（select/insert/update/delete）
+            for (String statementTag : MyBatisXmlStructure.STATEMENT_TAGS) {
+                XmlTag[] statementTags = rootTag.findSubTags(statementTag);
+                for (XmlTag tag : statementTags) {
                     XmlAttribute idAttr = tag.getAttribute("id");
-                    if (idAttr != null && idAttr.getValue() != null) {
-                        resultMap.put(idAttr.getValue().trim(), tag);
-                    }
+                    if (idAttr == null || idAttr.getValue() == null) continue;
+
+                    String sqlId = idAttr.getValue().trim();
+                    if (sqlId.isEmpty()) continue;
+
+                    // 更新本地statementMap
+                    statementMap.computeIfAbsent(sqlId, k -> new ArrayList<>()).add(tag);
+
+                    // 计算行号（文档行号从0开始，显示时+1）
+                    int startOffset = tag.getTextRange().getStartOffset();
+                    int lineNumber = document.getLineNumber(startOffset) + 1;
+
+                    // 同步到全局缓存
+                    XmlElementInfo xmlInfo = new XmlElementInfo(xmlFilePath, lineNumber, statementTag, sqlId);
+                    cacheConfig.addXmlElementMapping(sqlId, xmlInfo);
+                    LOG.debug("同步SQL语句到缓存: " + sqlId + "（标签: " + statementTag + "，文件: " + file.getName() + "）");
                 }
+            }
+
+            // 2. 解析SQL片段（sql标签）
+            XmlTag[] sqlTags = rootTag.findSubTags(MyBatisXmlStructure.SQL_TAG);
+            for (XmlTag tag : sqlTags) {
+                XmlAttribute idAttr = tag.getAttribute("id");
+                if (idAttr == null || idAttr.getValue() == null) continue;
+
+                String sqlId = idAttr.getValue().trim();
+                if (sqlId.isEmpty()) continue;
+
+                // 更新本地sqlFragmentMap
+                sqlFragmentMap.put(sqlId, tag);
+
+                // 计算行号并同步到全局缓存
+                int startOffset = tag.getTextRange().getStartOffset();
+                int lineNumber = document.getLineNumber(startOffset) + 1;
+
+                XmlElementInfo xmlInfo = new XmlElementInfo(xmlFilePath, lineNumber, MyBatisXmlStructure.SQL_TAG, sqlId);
+                cacheConfig.addXmlElementMapping(sqlId, xmlInfo);
+                LOG.debug("同步SQL片段到缓存: " + sqlId + "（文件: " + file.getName() + "）");
+            }
+
+            // 3. 解析resultMap标签
+            XmlTag[] resultTags = rootTag.findSubTags(MyBatisXmlStructure.RESULT_MAP_TAG);
+            for (XmlTag tag : resultTags) {
+                XmlAttribute idAttr = tag.getAttribute("id");
+                if (idAttr == null || idAttr.getValue() == null) continue;
+
+                String sqlId = idAttr.getValue().trim();
+                if (sqlId.isEmpty()) continue;
+
+                // 更新本地resultMap
+                resultMap.put(sqlId, tag);
+
+                // 计算行号并同步到全局缓存
+                int startOffset = tag.getTextRange().getStartOffset();
+                int lineNumber = document.getLineNumber(startOffset) + 1;
+
+                XmlElementInfo xmlInfo = new XmlElementInfo(xmlFilePath, lineNumber, MyBatisXmlStructure.RESULT_MAP_TAG, sqlId);
+                cacheConfig.addXmlElementMapping(sqlId, xmlInfo);
+                LOG.debug("同步ResultMap到缓存: " + sqlId + "（文件: " + file.getName() + "）");
             }
         }
 
@@ -257,37 +340,37 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
          */
         @Override
         public String getNamespace() {
-            LOG.debug("从DefaultMyBatisParseResult获取命名空间");
+            LOG.debug("从解析结果获取命名空间");
+            return ReadAction.compute(() -> {
+                if (file == null) return null;
 
-            if (file != null) {
-                XmlTag rootTag = file.getDocument().getRootTag();
-                if (rootTag != null) {
+                XmlDocument document = file.getDocument();
+                if (document == null) return null;
+
+                XmlTag rootTag = document.getRootTag();
+                if (rootTag == null) return null;
+
+
                     XmlAttribute namespaceAttr = rootTag.getAttribute("namespace");
-                    if (namespaceAttr != null && namespaceAttr.getValue() != null) {
-                        String namespace = namespaceAttr.getValue().trim();
-                        LOG.debug("成功获取命名空间: " + namespace);
-                        return namespace;
-                    }
-                }
-            }
-            LOG.debug("获取命名空间失败");
-            return null;
+
+                return namespaceAttr != null && namespaceAttr.getValue() != null ? namespaceAttr.getValue().trim() : null;
+
+            });
         }
 
         public XmlTag getRootMapper() {
-            if (file != null) {
-                XmlTag rootTag = file.getDocument().getRootTag();
-                if (rootTag != null) {
-                    return rootTag;
-                }
-            }
-            return null;
+            return ReadAction.compute(() -> {
+                if (file == null) return null;
+                XmlDocument document = file.getDocument();
+
+                return document != null ? document.getRootTag() : null;
+            });
         }
 
         /**
          * 获取所有SQL语句元素
          *
-         * @return SQL语句元素列表（当前版本返回空列表）
+         * @return SQL语句元素映射（id -> 标签列表）
          */
         @Override
         public Map<String, List<XmlTag>> getStatements() {
@@ -297,7 +380,7 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
         /**
          * 获取所有SQL片段元素
          *
-         * @return SQL片段元素列表（
+         * @return SQL片段元素映射（id -> 标签）
          */
         @Override
         public Map<String, XmlTag> getSqlFragments() {
@@ -307,7 +390,7 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
         /**
          * 获取所有结果映射元素
          *
-         * @return 结果映射元素列表（当前版本返回空列表）
+         * @return 结果映射元素映射（id -> 标签）
          */
         @Override
         public Map<String, XmlTag> getResultMaps() {
@@ -318,16 +401,11 @@ public class DefaultMyBatisXmlParser implements MyBatisXmlParser {
          * 根据ID获取SQL语句元素
          *
          * @param id SQL语句ID
-         * @return SQL语句元素（当前版本返回null）
+         * @return SQL语句元素列表（无结果时返回空列表）
          */
         @Override
         public List<XmlTag> getStatementById(String id) {
-            Map<String, List<XmlTag>> sqls = this.statementMap;
-            if (sqls.containsKey(id)) {
-                return sqls.get(id);
-            }
-            // todo : 有点怪
-            return null;
+            return statementMap.getOrDefault(id, Collections.emptyList());
         }
     }
 }

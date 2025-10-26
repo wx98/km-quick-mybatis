@@ -1,161 +1,202 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache;
 
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
- * MyBatis 缓存配置类
- * 用于配置缓存的行为，如缓存大小限制、过期时间等
+ * MyBatis缓存配置核心类，管理SQL ID与Java/XML元素的映射关系
  */
 public class MyBatisCacheConfig {
-    // 默认配置值
-    private static final int DEFAULT_MAX_CACHE_SIZE = 1000;
-    private static final int DEFAULT_CACHE_EXPIRY_TIME_SECONDS = 3600;
-    private static final int DEFAULT_SCAN_INTERVAL_SECONDS = 60;
-    private static final boolean DEFAULT_ENABLE_MEMORY_OPTIMIZATION = true;
-    private static final int DEFAULT_CLEANUP_BATCH_SIZE = 100;
+    // 单例模式（按项目隔离缓存）
+    private static final Map<Project, MyBatisCacheConfig> INSTANCES = new ConcurrentHashMap<>();
+    // ========================= 核心缓存数据结构 =========================
+    // 1. SQL ID -> 关联的Java元素（一对多）
+    private final Map<String, Set<JavaElementInfo>> sqlIdToJavaElements = new ConcurrentHashMap<>();
+    // 2. SQL ID -> 关联的XML元素（一对多）
+    private final Map<String, Set<XmlElementInfo>> sqlIdToXmlElements = new ConcurrentHashMap<>();
+    // 3. Java文件路径 -> 该文件涉及的所有SQL ID（一对多）
+    private final Map<String, Set<String>> javaFileToSqlIds = new ConcurrentHashMap<>();
+    // 4. XML文件路径 -> 该文件包含的所有SQL ID（一对多）
+    private final Map<String, Set<String>> xmlFileToSqlIds = new ConcurrentHashMap<>();
+    // 5. 文件摘要缓存（用于后续定时校验文件是否变更）
+    private final Map<String, String> fileDigestCache = new ConcurrentHashMap<>();
 
-    // 配置属性
-    private int maxCacheSize = DEFAULT_MAX_CACHE_SIZE;
-    private int cacheExpiryTimeSeconds = DEFAULT_CACHE_EXPIRY_TIME_SECONDS;
-    private int scanIntervalSeconds = DEFAULT_SCAN_INTERVAL_SECONDS;
-    private boolean enableMemoryOptimization = DEFAULT_ENABLE_MEMORY_OPTIMIZATION;
-    private int cleanupBatchSize = DEFAULT_CLEANUP_BATCH_SIZE;
+    // ========================= 构造器（私有，单例） =========================
+    private MyBatisCacheConfig() {
+    }
+
+    public static MyBatisCacheConfig getInstance(@NotNull Project project) {
+        return INSTANCES.computeIfAbsent(project, k -> new MyBatisCacheConfig());
+    }
+
+    // ========================= SQL ID与Java元素映射操作 =========================
 
     /**
-     * 创建默认配置
-     *
-     * @return 默认配置实例
+     * 添加SQL ID与Java元素的映射
      */
-    public static MyBatisCacheConfig createDefault() {
-        return new MyBatisCacheConfig();
+    public void addJavaElementMapping(@NotNull String sqlId, @NotNull JavaElementInfo javaInfo) {
+        // 1. 更新SQL ID到Java元素的映射
+        sqlIdToJavaElements.computeIfAbsent(sqlId, k -> ConcurrentHashMap.newKeySet()).add(javaInfo);
+        // 2. 更新Java文件到SQL ID的映射
+        javaFileToSqlIds.computeIfAbsent(javaInfo.getFilePath(), k -> ConcurrentHashMap.newKeySet()).add(sqlId);
     }
 
     /**
-     * 创建适用于大型项目的配置
-     *
-     * @return 适用于大型项目的配置实例
+     * 根据SQL ID获取关联的Java元素
      */
-    public static MyBatisCacheConfig createForLargeProjects() {
-        return new MyBatisCacheConfig().setMaxCacheSize(5000).setCacheExpiryTimeSeconds(1800).setScanIntervalSeconds(60).setEnableMemoryOptimization(true).setCleanupBatchSize(500);
+    @NotNull
+    public Set<JavaElementInfo> getJavaElementsBySqlId(@NotNull String sqlId) {
+        return sqlIdToJavaElements.getOrDefault(sqlId, Collections.emptySet());
+    }
+
+    // ========================= SQL ID与XML元素映射操作 =========================
+
+    /**
+     * 添加SQL ID与XML元素的映射
+     */
+    public void addXmlElementMapping(@NotNull String sqlId, @NotNull XmlElementInfo xmlInfo) {
+        // 1. 更新SQL ID到XML元素的映射
+        sqlIdToXmlElements.computeIfAbsent(sqlId, k -> ConcurrentHashMap.newKeySet()).add(xmlInfo);
+        // 2. 更新XML文件到SQL ID的映射
+        xmlFileToSqlIds.computeIfAbsent(xmlInfo.getFilePath(), k -> ConcurrentHashMap.newKeySet()).add(sqlId);
     }
 
     /**
-     * 创建适用于小型项目的配置
-     *
-     * @return 适用于小型项目的配置实例
+     * 根据SQL ID获取关联的XML元素
      */
-    public static MyBatisCacheConfig createForSmallProjects() {
-        return new MyBatisCacheConfig().setMaxCacheSize(500).setCacheExpiryTimeSeconds(3600).setScanIntervalSeconds(120).setEnableMemoryOptimization(false).setCleanupBatchSize(50);
+    @NotNull
+    public Set<XmlElementInfo> getXmlElementsBySqlId(@NotNull String sqlId) {
+        return sqlIdToXmlElements.getOrDefault(sqlId, Collections.emptySet());
+    }
+
+    // ========================= 文件与SQL ID的映射操作 =========================
+
+    /**
+     * 获取Java文件涉及的所有SQL ID
+     */
+    @NotNull
+    public Set<String> getSqlIdsByJavaFile(@NotNull String javaFilePath) {
+        return javaFileToSqlIds.getOrDefault(javaFilePath, Collections.emptySet());
     }
 
     /**
-     * 获取最大缓存大小
-     *
-     * @return 最大缓存项数
+     * 获取XML文件包含的所有SQL ID
      */
-    public int getMaxCacheSize() {
-        return maxCacheSize;
+    @NotNull
+    public Set<String> getSqlIdsByXmlFile(@NotNull String xmlFilePath) {
+        return xmlFileToSqlIds.getOrDefault(xmlFilePath, Collections.emptySet());
+    }
+
+    // ========================= 文件摘要操作（为后续缓存驱逐做准备） =========================
+
+    /**
+     * 保存文件摘要
+     */
+    public void saveFileDigest(@NotNull VirtualFile file, @NotNull String digest) {
+        fileDigestCache.put(file.getPath(), digest);
     }
 
     /**
-     * 设置最大缓存大小
-     *
-     * @param maxCacheSize 最大缓存项数
-     * @return 当前配置实例，用于链式调用
+     * 获取文件缓存的摘要
      */
-    public MyBatisCacheConfig setMaxCacheSize(int maxCacheSize) {
-        if (maxCacheSize > 0) {
-            this.maxCacheSize = maxCacheSize;
+    @Nullable
+    public String getFileDigest(@NotNull VirtualFile file) {
+        return fileDigestCache.get(file.getPath());
+    }
+
+
+    /**
+     * 获取文件缓存的摘要
+     */
+    @Nullable
+    public Map<String, String> getAllFileDigest() {
+        return fileDigestCache;
+    }
+
+    // ========================= 缓存清理操作（基础方法，为后续阶段准备） =========================
+
+    /**
+     * 清除指定Java文件的所有缓存映射
+     */
+    public void clearJavaFileCache(@NotNull String javaFilePath) {
+        // 1. 从javaFileToSqlIds中获取该文件关联的所有SQL ID
+        Set<String> sqlIds = javaFileToSqlIds.remove(javaFilePath);
+        if (sqlIds == null) return;
+
+        // 2. 从sqlIdToJavaElements中移除这些SQL ID关联的该文件元素
+        for (String sqlId : sqlIds) {
+            Set<JavaElementInfo> javaElements = sqlIdToJavaElements.get(sqlId);
+            if (javaElements != null) {
+                javaElements.removeIf(info -> javaFilePath.equals(info.getFilePath()));
+                // 若SQL ID对应的Java元素为空，移除该SQL ID
+                if (javaElements.isEmpty()) {
+                    sqlIdToJavaElements.remove(sqlId);
+                }
+            }
         }
-        return this;
     }
 
     /**
-     * 获取缓存过期时间（秒）
-     *
-     * @return 缓存过期时间
+     * 清除指定XML文件的所有缓存映射
      */
-    public int getCacheExpiryTimeSeconds() {
-        return cacheExpiryTimeSeconds;
-    }
+    public void clearXmlFileCache(@NotNull String xmlFilePath) {
+        // 1. 从xmlFileToSqlIds中获取该文件关联的所有SQL ID
+        Set<String> sqlIds = xmlFileToSqlIds.remove(xmlFilePath);
+        if (sqlIds == null) return;
 
-    /**
-     * 设置缓存过期时间（秒）
-     *
-     * @param cacheExpiryTimeSeconds 缓存过期时间
-     * @return 当前配置实例，用于链式调用
-     */
-    public MyBatisCacheConfig setCacheExpiryTimeSeconds(int cacheExpiryTimeSeconds) {
-        if (cacheExpiryTimeSeconds > 0) {
-            this.cacheExpiryTimeSeconds = cacheExpiryTimeSeconds;
+        // 2. 从sqlIdToXmlElements中移除这些SQL ID关联的该文件元素
+        for (String sqlId : sqlIds) {
+            Set<XmlElementInfo> xmlElements = sqlIdToXmlElements.get(sqlId);
+            if (xmlElements != null) {
+                xmlElements.removeIf(info -> xmlFilePath.equals(info.getFilePath()));
+                // 若SQL ID对应的XML元素为空，移除该SQL ID
+                if (xmlElements.isEmpty()) {
+                    sqlIdToXmlElements.remove(sqlId);
+                }
+            }
         }
-        return this;
+        // 3. 清除文件摘要
+        fileDigestCache.remove(xmlFilePath);
     }
 
     /**
-     * 获取文件扫描间隔（秒）
-     *
-     * @return 文件扫描间隔
+     * 清除所有缓存（用于全局刷新）
      */
-    public int getScanIntervalSeconds() {
-        return scanIntervalSeconds;
+    public void clearAllCache() {
+        sqlIdToJavaElements.clear();
+        sqlIdToXmlElements.clear();
+        javaFileToSqlIds.clear();
+        xmlFileToSqlIds.clear();
+        fileDigestCache.clear();
     }
 
-    /**
-     * 设置文件扫描间隔（秒）
-     *
-     * @param scanIntervalSeconds 文件扫描间隔
-     * @return 当前配置实例，用于链式调用
-     */
-    public MyBatisCacheConfig setScanIntervalSeconds(int scanIntervalSeconds) {
-        if (scanIntervalSeconds > 0) {
-            this.scanIntervalSeconds = scanIntervalSeconds;
-        }
-        return this;
+
+    public Map<String, Set<JavaElementInfo>> getSqlIdToJavaElements() {
+        return sqlIdToJavaElements;
     }
 
-    /**
-     * 是否启用内存优化
-     *
-     * @return 是否启用内存优化
-     */
-    public boolean isEnableMemoryOptimization() {
-        return enableMemoryOptimization;
+    public Map<String, Set<XmlElementInfo>> getSqlIdToXmlElements() {
+        return sqlIdToXmlElements;
     }
 
-    /**
-     * 设置是否启用内存优化
-     *
-     * @param enableMemoryOptimization 是否启用内存优化
-     * @return 当前配置实例，用于链式调用
-     */
-    public MyBatisCacheConfig setEnableMemoryOptimization(boolean enableMemoryOptimization) {
-        this.enableMemoryOptimization = enableMemoryOptimization;
-        return this;
+    public Map<String, Set<String>> getJavaFileToSqlIds() {
+        return javaFileToSqlIds;
     }
 
-    /**
-     * 获取清理批次大小
-     *
-     * @return 清理批次大小
-     */
-    public int getCleanupBatchSize() {
-        return cleanupBatchSize;
+    public Map<String, Set<String>> getXmlFileToSqlIds() {
+        return xmlFileToSqlIds;
     }
 
-    /**
-     * 设置清理批次大小
-     *
-     * @param cleanupBatchSize 清理批次大小
-     * @return 当前配置实例，用于链式调用
-     */
-    public MyBatisCacheConfig setCleanupBatchSize(int cleanupBatchSize) {
-        if (cleanupBatchSize > 0) {
-            this.cleanupBatchSize = cleanupBatchSize;
-        }
-        return this;
-    }
-
-    @Override
-    public String toString() {
-        return "MyBatisCacheConfig{" + "maxCacheSize=" + maxCacheSize + ", cacheExpiryTimeSeconds=" + cacheExpiryTimeSeconds + ", scanIntervalSeconds=" + scanIntervalSeconds + ", enableMemoryOptimization=" + enableMemoryOptimization + ", cleanupBatchSize=" + cleanupBatchSize + '}';
+    public Map<String, String> getFileDigestCache() {
+        return fileDigestCache;
     }
 }

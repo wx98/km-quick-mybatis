@@ -23,6 +23,16 @@
         />
     </applicationListeners>
 
+    <actions>
+        <!-- 注册刷新动作 -->
+        <action id="QuickMyBatis.RefreshCache"
+                class="cn.wx1998.kmerit.intellij.plugins.quickmybatis.actions.RefreshMyBatisCacheAction"
+                text="刷新MyBatis缓存" description="刷新所有MyBatis相关缓存">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
+        </action>
+    </actions>
+
     <extensions defaultExtensionNs="com.intellij">
         <projectService
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService"
@@ -57,8 +67,25 @@
         />
         <!-- 缓存管理器服务 -->
         <projectService
-                id="cn.wx1998.MyBatisCacheManager"
+                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.DefaultMyBatisCacheManager"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.DefaultMyBatisCacheManager"
         />
+        <!-- 缓存管理器服务 -->
+        <projectService
+                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistentState"
+                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistentState"
+        />
+        <!-- 缓存管理器服务 -->
+        <projectService
+                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting"
+                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting"
+        />
+        <!-- 项目启动时触发 -->
+        <postStartupActivity
+                implementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCacheStartupLoader"/>
+
+        <!-- 项目关闭时触发 -->
+        <projectCloseHandler
+                implementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCacheCloseSaver"/>
     </extensions>
 </idea-plugin>
