@@ -1,12 +1,16 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider;
 
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheConfig;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.XmlTagLocator;
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo;
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider;
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder;
 import com.intellij.codeInsight.navigation.impl.PsiTargetPresentationRenderer;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.markup.GutterIconRenderer;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.xml.XmlTagImpl;
@@ -28,74 +32,55 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
     // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(JavaLineMarkerProvider.class);
 
-    static Map<Class<?>, Supplier<AbstractElementFilter>> filterMap = Map.of(PsiClass.class, PsiClassAbstractElementFilter::new, PsiMethod.class, PsiMethodAbstractElementFilter::new, PsiField.class, PsiFieldAbstractElementFilter::new, PsiMethodCallExpression.class, PsiMethodCallExpressionElementFilter::new);
 
     @Override
     protected void collectNavigationMarkers(@NotNull PsiElement element, @NotNull Collection<? super RelatedItemLineMarkerInfo<?>> result) {
-        final var filter = createFilter(element);
+        Project project = element.getProject();
+        MyBatisCacheConfig cacheConfig = MyBatisCacheConfig.getInstance(project);
+        JavaService javaService = JavaService.getInstance(project);
+        ElementFilter filter = new ElementFilter() {
+            @Override
+            protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
+                CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
+
+                String sqlId = null;
+                if (element instanceof PsiClass psiClass) {
+                    sqlId = psiClass.getQualifiedName();
+                } else if (element instanceof PsiMethod psiMethod) {
+                    PsiClass psiClass = psiMethod.getContainingClass();
+                    String qualifiedName = psiClass.getQualifiedName();
+                    String methodName = psiMethod.getName();
+                    sqlId = qualifiedName + "." + methodName;
+                } else if (element instanceof PsiField psiField) {
+                    PsiExpression initializer = psiField.getInitializer();
+                    if (initializer != null) {
+                        sqlId = JavaService.parseExpression(initializer);
+                    }
+                } else if (element instanceof PsiMethodCallExpression psiMethodCallExpression) {
+                    PsiMethod method = psiMethodCallExpression.resolveMethod();
+                    if (method != null && javaService.isSqlSessionMethod(method)) {
+                        PsiExpression[] args = psiMethodCallExpression.getArgumentList().getExpressions();
+                        if (args.length != 0) {
+                            sqlId = JavaService.parseExpression(args[0]);
+                        }
+                    }
+                }
+                if (sqlId != null) {
+                    Set<XmlElementInfo> xmlElementInfos = cacheConfig.getXmlElementsBySqlId(sqlId);
+                    for (XmlElementInfo xmlElementInfo : xmlElementInfos) {
+                        XmlTag xmlTagByInfo = XmlTagLocator.findXmlTagByInfo(xmlElementInfo, project);
+                        processor.process(xmlTagByInfo);
+                    }
+                }
+                return processor.getResults();
+            }
+        };
         filter.collectNavigationMarkers(element, result);
     }
-
-    // 定义一个工厂方法来创建过滤器
-    private AbstractElementFilter createFilter(Object element) {
-        for (Map.Entry<Class<?>, Supplier<AbstractElementFilter>> entry : filterMap.entrySet()) {
-            if (entry.getKey().isInstance(element))
-                return entry.getValue().get();
-        }
-        return new EmptyAbstractElementFilter();
-    }
-
-
-    private static class PsiClassAbstractElementFilter extends AbstractElementFilter {
-        @Override
-        protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
-            // 收集与PsiClass相关的Mapper节点
-            CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
-            JavaService.getInstance(element.getProject()).processClass((PsiClass) element);
-            return processor.getResults();
-        }
-    }
-
-    private static class PsiMethodAbstractElementFilter extends AbstractElementFilter {
-        @Override
-        protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
-            // 收集与PsiMethod相关的ID DOM元素节点
-            CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
-            JavaService.getInstance(element.getProject()).processMethod(((PsiMethod) element));
-            return processor.getResults();
-        }
-    }
-
-    private static class PsiFieldAbstractElementFilter extends AbstractElementFilter {
-
-        @Override
-        protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
-            CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
-            JavaService.getInstance(element.getProject()).processField((PsiField) element);
-            return processor.getResults();
-        }
-    }
-
-    private static class PsiMethodCallExpressionElementFilter extends AbstractElementFilter {
-        @Override
-        protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
-            CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
-            JavaService.getInstance(element.getProject()).processMethodCall(((PsiMethodCallExpression) element));
-            return processor.getResults();
-        }
-    }
-
-    public static class EmptyAbstractElementFilter extends AbstractElementFilter {
-        @Override
-        protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
-            return Collections.emptyList();
-        }
-    }
-
 }
 
 
-abstract class AbstractElementFilter {
+abstract class ElementFilter {
 
     private static @Nullable PsiElement getPsiElement(@NotNull PsiElement element) {
         PsiElement targetMarkerInfo = null;
@@ -155,50 +140,45 @@ abstract class AbstractElementFilter {
     }
 
     public Supplier<PsiTargetPresentationRenderer<PsiElement>> getRenderer() {
-        return new Supplier<PsiTargetPresentationRenderer<PsiElement>>() {
+        return () -> new PsiTargetPresentationRenderer<>() {
+            @Nls
+            @NotNull
             @Override
-            public PsiTargetPresentationRenderer<PsiElement> get() {
-                return new PsiTargetPresentationRenderer<PsiElement>() {
-                    @Nls
-                    @NotNull
-                    @Override
-                    public String getElementText(@NotNull PsiElement element) {
-                        XmlTag xmlTag = (XmlTag) element;
-                        XmlAttribute attr = xmlTag.getAttribute("id", XmlUtil.XML_SCHEMA_URI);
-                        attr = attr == null ? xmlTag.getAttribute("id") : attr;
-                        String elementText = attr == null || attr.getValue() == null ? xmlTag.getName() : attr.getValue();
-                        XmlTag parentTag = xmlTag.getParentTag();
-                        String namespace = "";
-                        if (parentTag != null) {
-                            namespace = parentTag.getAttribute("namespace").getValue() + ".";
-                        }
-                        return namespace + elementText;
-                    }
+            public String getElementText(@NotNull PsiElement element) {
+                XmlTag xmlTag = (XmlTag) element;
+                XmlAttribute attr = xmlTag.getAttribute("id", XmlUtil.XML_SCHEMA_URI);
+                attr = attr == null ? xmlTag.getAttribute("id") : attr;
+                String elementText = attr == null || attr.getValue() == null ? xmlTag.getName() : attr.getValue();
+                XmlTag parentTag = xmlTag.getParentTag();
+                String namespace = "";
+                if (parentTag != null) {
+                    namespace = parentTag.getAttribute("namespace").getValue() + ".";
+                }
+                return namespace + elementText;
+            }
 
-                    @Nls
-                    @Nullable
-                    @Override
-                    public String getContainerText(@NotNull PsiElement element) {
-                        XmlTagImpl xmlTag = (XmlTagImpl) element;
-                        final PsiFile file = element.getContainingFile();
-                        String databaseId = getDatabaseId(xmlTag);
-                        return file.getVirtualFile().getName() + databaseId;
-                    }
+            @Nls
+            @NotNull
+            @Override
+            public String getContainerText(@NotNull PsiElement element) {
+                XmlTagImpl xmlTag = (XmlTagImpl) element;
+                final PsiFile file = element.getContainingFile();
+                String databaseId = getDatabaseId(xmlTag);
+                return file.getVirtualFile().getName() + databaseId;
+            }
 
-                    @NotNull
-                    private String getDatabaseId(XmlTagImpl element) {
-                        // 获取 XML 标签的 "databaseId" 属性值，如果不存在则返回空字符串
-                        final XmlAttribute databaseIdAttr = element.getAttribute("databaseId");
-                        String databaseId = null;
-                        if (databaseIdAttr != null) {
-                            databaseId = "," + databaseIdAttr.getValue();
-                        }
-                        if (databaseId == null) {
-                            databaseId = "";
-                        }
-                        return databaseId;
-                    }
-                };
+            @NotNull
+            private String getDatabaseId(XmlTagImpl element) {
+                // 获取 XML 标签的 "databaseId" 属性值，如果不存在则返回空字符串
+                final XmlAttribute databaseIdAttr = element.getAttribute("databaseId");
+                String databaseId = null;
+                if (databaseIdAttr != null) {
+                    databaseId = "," + databaseIdAttr.getValue();
+                }
+                if (databaseId == null) {
+                    databaseId = "";
+                }
+                return databaseId;
             }
         };
     }

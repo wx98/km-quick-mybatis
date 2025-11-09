@@ -10,6 +10,20 @@ import org.jetbrains.annotations.NotNull;
 public class MyBatisCachePersistenceManager {
 
     /**
+     * 手动触发缓存保存
+     */
+    public static void manualSaveCache(@NotNull Project project) {
+        new MyBatisCachePersistenceManager().saveCache(project);
+    }
+
+    /**
+     * 手动触发缓存加载
+     */
+    public static void manualLoadCache(@NotNull Project project) {
+        new MyBatisCachePersistenceManager().loadCache(project);
+    }
+
+    /**
      * 保存缓存到持久化存储
      */
     public void saveCache(@NotNull Project project) {
@@ -25,20 +39,6 @@ public class MyBatisCachePersistenceManager {
         MyBatisCacheConfig cacheConfig = MyBatisCacheConfig.getInstance(project);
         MyBatisCachePersistentState persistentState = MyBatisCachePersistentState.getInstance(project);
         persistentState.syncToCacheConfig(cacheConfig);
-    }
-
-    /**
-     * 手动触发缓存保存
-     */
-    public static void manualSaveCache(@NotNull Project project) {
-        new MyBatisCachePersistenceManager().saveCache(project);
-    }
-
-    /**
-     * 手动触发缓存加载
-     */
-    public static void manualLoadCache(@NotNull Project project) {
-        new MyBatisCachePersistenceManager().loadCache(project);
     }
 
 }

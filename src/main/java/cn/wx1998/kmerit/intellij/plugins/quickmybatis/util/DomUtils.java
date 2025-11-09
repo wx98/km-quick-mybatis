@@ -36,7 +36,7 @@ public final class DomUtils {
     public static boolean isMybatisFile(@Nullable PsiFile file) {
         LOG.debug("Checking if file is a MyBatis XML file: " + (file != null ? file.getName() : "null"));
 
-        if (file == null || !(file instanceof XmlFile)) {
+        if (!(file instanceof XmlFile)) {
             LOG.debug("File is null or not an XmlFile");
             return false;
         }

@@ -3,9 +3,14 @@ package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistenceManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.JavaParser;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.JavaParserFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParser;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParserFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.XmlTagLocator;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -21,11 +26,9 @@ import com.intellij.openapi.vfs.newvfs.BulkFileListener;
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
-import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiJavaFile;
-import com.intellij.psi.PsiManager;
+import com.intellij.psi.*;
 import com.intellij.psi.xml.XmlFile;
+import com.intellij.psi.xml.XmlTag;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,34 +48,34 @@ import java.util.stream.Collectors;
  * 缓存管理器默认实现，基于 MyBatisCacheConfig 管理缓存生命周期
  * 负责缓存的创建、更新、失效、扫描和统计
  */
-public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
+public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     // 日志前缀
     private static final String CACHE_LOG_PREFIX = "[MyBatis缓存管理器] ";
     // 单例键（按项目隔离）
-    private static final Key<DefaultMyBatisCacheManager> INSTANCE_KEY = Key.create("MyBatisCacheManager.Instance");
+    private static final Key<MyBatisCacheManagerDefault> INSTANCE_KEY = Key.create("MyBatisCacheManager.Instance");
     // 日志实例
-    private static final Logger LOG = Logger.getInstance(DefaultMyBatisCacheManager.class);
+    private static final Logger LOG = Logger.getInstance(MyBatisCacheManagerDefault.class);
     // 定时扫描线程池
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     // 项目实例
     private final Project project;
-    // 全局缓存核心配置（阶段一实现的缓存结构）
-    private MyBatisCacheConfig cacheConfig;
     // 缓存有效性标记（true=有效，false=需刷新）
     private final Map<String, Boolean> cacheValidityMap = new ConcurrentHashMap<>();
     // 缓存统计信息
     private final CacheStatistics statistics = new DefaultCacheStatistics();
     // 防止重复扫描的锁
     private final transient Object scanLock = new Object();
-    // 定时扫描间隔（5分钟，单位：毫秒）
-    private long scanIntervalMs = 5 * 60 * 1000;
     // 缓存版本号，用于增量更新
     private final AtomicLong cacheVersion = new AtomicLong(1);
+    // 全局缓存核心配置（阶段一实现的缓存结构）
+    private MyBatisCacheConfig cacheConfig;
+    // 定时扫描间隔（5分钟，单位：毫秒）
+    private long scanIntervalMs = 5 * 60 * 1000;
 
     /**
      * 私有构造器（单例模式）
      */
-    DefaultMyBatisCacheManager(@NotNull Project project) {
+    MyBatisCacheManagerDefault(@NotNull Project project) {
         this.project = project;
         this.cacheConfig = MyBatisCacheConfig.getInstance(project);
         this.initialize();
@@ -81,10 +84,10 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
     /**
      * 获取单例实例（按项目隔离）
      */
-    public static DefaultMyBatisCacheManager getInstance(@NotNull Project project) {
-        DefaultMyBatisCacheManager instance = project.getUserData(INSTANCE_KEY);
+    public static MyBatisCacheManagerDefault getInstance(@NotNull Project project) {
+        MyBatisCacheManagerDefault instance = project.getUserData(INSTANCE_KEY);
         if (instance == null) {
-            instance = new DefaultMyBatisCacheManager(project);
+            instance = new MyBatisCacheManagerDefault(project);
             project.putUserData(INSTANCE_KEY, instance);
         }
         return instance;
@@ -134,9 +137,13 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
                     if (!extension.equals("java") && !extension.equals("xml")) continue;
 
                     // 4. 处理有效文件的变更
-                    if (event instanceof VFileDeleteEvent || event instanceof VFileContentChangeEvent) {
+                    if (event instanceof VFileContentChangeEvent) {
                         invalidateFileCache(file.getPath());
                         LOG.debug(CACHE_LOG_PREFIX + "文件变化触发缓存失效: " + file.getPath());
+                    }
+                    if (event instanceof VFileDeleteEvent) {
+                        invalidateFileCache(file.getPath());
+                        LOG.debug(CACHE_LOG_PREFIX + "文件删除触发缓存失效: " + file.getPath());
                     }
                 }
             }
@@ -168,27 +175,29 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
         int changedCount = 0;
 
         // 遍历所有缓存的文件摘要
-        for (Map.Entry<String, String> entry : cacheConfig.getAllFileDigest().entrySet()) {
-            String filePath = entry.getKey();
-            String oldDigest = entry.getValue();
+        if (cacheConfig.getAllFileDigest() != null) {
+            for (Map.Entry<String, String> entry : cacheConfig.getAllFileDigest().entrySet()) {
+                String filePath = entry.getKey();
+                String oldDigest = entry.getValue();
 
-            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
-            if (file == null || !file.exists()) {
-                // 文件已删除，清除缓存
-                clearFileCache(filePath);
-                changedCount++;
-                continue;
-            }
+                VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
+                if (file == null || !file.exists()) {
+                    // 文件已删除，清除缓存
+                    clearFileCache(filePath);
+                    changedCount++;
+                    continue;
+                }
 
-            // 计算当前文件摘要
-            String newDigest = calculateFileDigest(file);
-            if (!newDigest.equals(oldDigest)) {
-                // 摘要不一致，文件已修改
-                LOG.debug(CACHE_LOG_PREFIX + "文件内容变更: " + filePath + "（旧摘要: " + oldDigest + ", 新摘要: " + newDigest + "）");
-                clearFileCache(filePath);
-                cacheConfig.saveFileDigest(file, newDigest); // 更新摘要
-                reparseAndCacheFile(file); // 重新解析
-                changedCount++;
+                // 计算当前文件摘要
+                String newDigest = calculateFileDigest(file);
+                if (!newDigest.equals(oldDigest)) {
+                    // 摘要不一致，文件已修改
+                    LOG.debug(CACHE_LOG_PREFIX + "文件内容变更: " + filePath + "（旧摘要: " + oldDigest + ", 新摘要: " + newDigest + "）");
+                    clearFileCache(filePath);
+                    cacheConfig.saveFileDigest(file, newDigest); // 更新摘要
+                    reparseAndCacheFile(file); // 重新解析
+                    changedCount++;
+                }
             }
         }
 
@@ -215,17 +224,16 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
         PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
         if (psiFile == null) return;
 
-        if (psiFile instanceof XmlFile) {
+        if (psiFile instanceof XmlFile xmlFile) {
             // 重新解析XML文件
             MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
-            parser.parse((XmlFile) psiFile);
-        } else if (psiFile instanceof PsiJavaFile) {
-            // 重新处理Java文件
-            JavaService javaService = new JavaService(project);
-            PsiClass[] classes = ((PsiJavaFile) psiFile).getClasses();
-            for (PsiClass aClass : classes) {
-                javaService.processClass(aClass);
-            }
+            MyBatisXmlParser.MyBatisParseResult parse = parser.parse(xmlFile);
+            syncToCacheManager(parse);
+        } else if (psiFile instanceof PsiJavaFile psiJavaFile) {
+            // 重新解析Java文件
+            JavaParser parser = JavaParserFactory.getRecommendedParser(project);
+            JavaParser.JavaParseResult parse = parser.parse(psiJavaFile);
+            syncToCacheManager(parse);
         }
     }
 
@@ -233,15 +241,11 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
 
     @Override
     public void putClassXmlMapping(@NotNull String className, @NotNull String xmlFilePath) {
-        // 委托给 MyBatisCacheConfig 存储（阶段一的双向映射）
-        // 此处逻辑已在阶段一的 addJavaElementMapping/addXmlElementMapping 中实现
-        // 本方法作为高层封装，供外部调用
         LOG.debug(CACHE_LOG_PREFIX + "建立Class与Xml映射: " + className + " -> " + xmlFilePath);
     }
 
     @Override
     public void putMethodStatementMapping(@NotNull String className, @NotNull String methodName, @NotNull String statementId) {
-        // 方法与SQL ID的映射通过 JavaService 处理后同步到 cacheConfig
         LOG.debug(CACHE_LOG_PREFIX + "建立方法与SqlId映射: " + className + "#" + methodName + " -> " + statementId);
     }
 
@@ -356,7 +360,7 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
         int refreshed = 0;
 
         // 收集所有无效的文件
-        List<String> invalidFiles = cacheValidityMap.entrySet().stream().filter(entry -> !entry.getValue()).map(Map.Entry::getKey).collect(Collectors.toList());
+        List<String> invalidFiles = cacheValidityMap.entrySet().stream().filter(entry -> !entry.getValue()).map(Map.Entry::getKey).toList();
 
         for (String filePath : invalidFiles) {
             VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
@@ -404,13 +408,247 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
     }
 
     /**
+     * 执行全局缓存刷新（带进度提示）
+     */
+    public void performFullCacheRefresh() {
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "刷新插件MyBatis缓存") {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                indicator.setText("正在清除旧缓存...");
+                clearAllCache();
+
+                // 设置进度条为不确定性
+                indicator.setIndeterminate(false);
+                // 初始化进度
+                indicator.setFraction(0.0);
+
+                // 进度
+                double[] progress = {0.0};
+
+                indicator.setText("正在重新解析所有MyBatis文件...");
+                reparseAllMyBatisFiles(indicator, 0.5, progress);
+
+                indicator.setText("正在处理Java文件...");
+                processAllJavaFiles(indicator, 0.5, progress);
+
+                indicator.setText("正在更新缓存版本...");
+                incrementCacheVersion();
+
+                indicator.setText("缓存刷新完成");
+                MyBatisCachePersistenceManager.manualSaveCache(project);
+            }
+        });
+    }
+
+    /**
+     * 重新解析所有MyBatis相关文件
+     *
+     * @param indicator  @See {@link com.intellij.openapi.progress.ProgressIndicator}
+     * @param proportion 占用的总进度
+     * @param progress   进度上限文
+     */
+    private void reparseAllMyBatisFiles(ProgressIndicator indicator, double proportion, double[] progress) {
+        // 解析所有XML文件
+        XmlService xmlService = XmlService.getInstance(project);
+        // 获取所有 MyBatisXml 文件
+        List<XmlFile> myBatisXmlFiles = xmlService.getMyBatisXmlFiles();
+        // 获取 MyBatisXml 解析器
+        MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
+        // 计算每个文件的百分占比
+        double step = proportion / (myBatisXmlFiles.size() + 1);
+        // 遍历所有 MyBatisXml
+        for (XmlFile xmlFile : myBatisXmlFiles) {
+            // 获取当前文件的绝对路径
+            String filePath = xmlFile.getVirtualFile().getPath();
+            // 获取项目的绝对路径
+            String basePath = project.getBasePath() == null ? "" : project.getBasePath();
+            // 从文件绝对路径中删除项目绝对路径展示给用户
+            String showText = filePath.replace(basePath, "");
+            // 设置进度条上方显示的进度文本
+            indicator.setText("解析XML文件: " + showText);
+            // 设置进度条下显示的进度详细信息文本
+            indicator.setText2(filePath);
+            // 调用Xml解析器拿到结果
+            MyBatisXmlParser.MyBatisParseResult parse = parser.parse(xmlFile);
+            //更新缓存
+            LOG.debug("MyBatis XML文件解析完成: " + filePath);
+            syncToCacheManager(parse);
+            LOG.debug("MyBatis XML同步到缓存完成: " + filePath);
+            // 更新进度
+            progress[0] += step;
+            // 设置进度
+            indicator.setFraction(progress[0]);
+        }
+    }
+
+    /**
+     * 处理所有相关Java文件
+     */
+    private void processAllJavaFiles(ProgressIndicator indicator, double proportion, double[] progress) {
+        // 解析所有JAVA文件
+        JavaService javaService = JavaService.getInstance(project);
+        // 获取所有 Java 文件
+        List<PsiJavaFile> javaFiles = javaService.getAllJavaFiles();
+        // 获取 Java 解析器
+        JavaParser parser = JavaParserFactory.getRecommendedParser(project);
+        // 计算每个文件的百分占比
+        double step = proportion / (javaFiles.size() + 1);
+        // 获取所有映射的Java文件路径
+        for (PsiJavaFile psiJavaFile : javaFiles) {
+            // 获取当前文件的绝对路径
+            String filePath = psiJavaFile.getVirtualFile().getPath();
+            // 获取项目的绝对路径
+            String basePath = project.getBasePath() == null ? "" : project.getBasePath();
+            // 从文件绝对路径中删除项目绝对路径展示给用户
+            String showText = filePath.replace(basePath, "");
+            // 设置进度条上方显示的进度文本
+            indicator.setText("解析Java文件: " + showText);
+            // 设置进度条下显示的进度详细信息文本
+            indicator.setText2(filePath);
+            // 调用Xml解析器拿到结果
+            JavaParser.JavaParseResult parse = parser.parse(psiJavaFile);
+            //更新缓存
+            LOG.debug("Java 文件解析完成: " + filePath);
+            syncToCacheManager(parse);
+            LOG.debug("Java 同步到缓存完成: " + filePath);
+            // 更新进度
+            progress[0] += step;
+            // 设置进度
+            indicator.setFraction(progress[0]);
+        }
+    }
+
+    /**
+     * 增量刷新缓存（只刷新变更的文件）
+     */
+    public void performIncrementalRefresh() {
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "增量刷新MyBatis缓存") {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                indicator.setText("正在检查变更文件...");
+                scanForFileChanges(); // 调用父类的文件变更扫描
+                indicator.setText("增量刷新完成");
+                incrementCacheVersion();
+                MyBatisCachePersistenceManager.manualSaveCache(project);
+            }
+        });
+    }
+
+    /**
+     * 增加缓存版本号
+     */
+    public void incrementCacheVersion() {
+        cacheVersion.incrementAndGet();
+    }
+
+    /**
+     * 获取当前缓存版本号
+     */
+    public long getCurrentCacheVersion() {
+        return cacheVersion.get();
+    }
+
+    /**
+     * 检查缓存是否需要更新（与其他模块同步）
+     */
+    public boolean isCacheUpToDate(long lastKnownVersion) {
+        return cacheVersion.get() == lastKnownVersion;
+    }
+
+    /**
+     * 同步解析结果到缓存管理器
+     */
+    private void syncToCacheManager(MyBatisXmlParser.MyBatisParseResult result) {
+        if (result == null) return;
+
+        // 检查是否有id属性
+        ReadAction.run(() -> {
+
+            String namespaceName = result.getNamespaceName();
+            XmlTag rootTag = result.getNamespace();
+
+            XmlElementInfo xmlElementInfoRootTag = XmlTagLocator.createXmlElementInfo(rootTag, namespaceName, rootTag.getName());
+            if (xmlElementInfoRootTag != null) {
+                cacheConfig.addXmlElementMapping(namespaceName, xmlElementInfoRootTag);
+            }
+
+            Map<String, List<XmlTag>> statements = result.getStatements();
+            Set<String> keySet = statements.keySet();
+            for (String attributeName : keySet) {
+                List<XmlTag> list = statements.get(attributeName);
+                for (XmlTag tag : list) {
+                    String sqlKey = namespaceName + '.' + attributeName;
+                    XmlElementInfo xmlElementInfo = XmlTagLocator.createXmlElementInfo(tag, sqlKey, tag.getName());
+                    if (xmlElementInfo != null) {
+                        cacheConfig.addXmlElementMapping(sqlKey, xmlElementInfo);
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * 同步解析结果到缓存管理器
+     */
+    private void syncToCacheManager(JavaParser.JavaParseResult result) {
+        if (result == null) return;
+
+        // 检查是否有id属性
+        ReadAction.run(() -> {
+
+            Map<String, PsiClass> classes = result.getClasses();
+            classes.forEach((key, psiClass) -> {
+                JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(psiClass, key, JavaService.TYPE_CLASS);
+                if (javaElementInfo != null) {
+                    cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                }
+            });
+
+            Map<String, PsiClass> interfaces = result.getInterfaces();
+            interfaces.forEach((key, psiClass) -> {
+                JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(psiClass, key, JavaService.TYPE_INTERFACE_CLASS);
+                if (javaElementInfo != null) {
+                    cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                }
+            });
+            Map<String, List<PsiMethod>> allClassMethods = result.getAllClassMethods();
+            allClassMethods.forEach((key, list) -> {
+                list.forEach(classMethod -> {
+                    JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
+                    if (javaElementInfo != null) {
+                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                    }
+                });
+            });
+            Map<String, List<PsiMethod>> allInterfaceMethods = result.getAllInterfaceMethods();
+            allInterfaceMethods.forEach((key, list) -> {
+                list.forEach(psiMethod -> {
+                    JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(psiMethod, key, JavaService.TYPE_INTERFACE_METHOD);
+                    if (javaElementInfo != null) {
+                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                    }
+                });
+            });
+            Map<String, List<PsiField>> methodCall = result.getStaticStringField();
+            methodCall.forEach((key, list) -> {
+                list.forEach(psiField -> {
+                    JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(psiField, key, JavaService.TYPE_METHOD_CALL);
+                    if (javaElementInfo != null) {
+                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                    }
+                });
+            });
+        });
+    }
+
+    /**
      * 缓存统计默认实现
      */
     private static class DefaultCacheStatistics implements CacheStatistics {
+        private final Object lock = new Object();
         private long hitCount;
         private long missCount;
         private long invalidationCount;
-        private final Object lock = new Object();
 
         @Override
         public long getHitCount() {
@@ -470,117 +708,6 @@ public class DefaultMyBatisCacheManager implements MyBatisCacheManager {
                 invalidationCount = 0;
             }
         }
-    }
-
-
-    /**
-     * 执行全局缓存刷新（带进度提示）
-     */
-    public void performFullCacheRefresh() {
-        ProgressManager.getInstance().run(new Task.Backgroundable(project, "刷新MyBatis缓存") {
-            @Override
-            public void run(@NotNull ProgressIndicator indicator) {
-                indicator.setText("正在清除旧缓存...");
-                clearAllCache();
-
-                indicator.setText("正在重新解析所有MyBatis文件...");
-                reparseAllMyBatisFiles(indicator);
-
-                indicator.setText("正在更新缓存版本...");
-                incrementCacheVersion();
-
-                indicator.setText("缓存刷新完成");
-                MyBatisCachePersistenceManager.manualSaveCache(project);
-            }
-        });
-    }
-
-    /**
-     * 重新解析所有MyBatis相关文件
-     */
-    private void reparseAllMyBatisFiles(ProgressIndicator indicator) {
-        // 解析所有XML文件
-        JavaService javaService = JavaService.getInstance(project);
-        List<XmlFile> myBatisXmlFiles = javaService.getMyBatisXmlFiles();
-        MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
-
-        indicator.setIndeterminate(false);
-        indicator.setFraction(0.0);
-        double step = 1.0 / (myBatisXmlFiles.size() + 1);
-        double progress = 0.0;
-
-        for (XmlFile xmlFile : myBatisXmlFiles) {
-            indicator.setText("解析XML文件: " + xmlFile.getVirtualFile().getPath());
-            parser.parse(xmlFile);
-            progress += step;
-            indicator.setFraction(progress);
-        }
-
-        // 解析所有相关Java文件
-        indicator.setText("正在处理Java文件...");
-        processAllJavaFiles(indicator, progress, step);
-    }
-
-    /**
-     * 处理所有相关Java文件
-     */
-    private void processAllJavaFiles(ProgressIndicator indicator, double progress, double step) {
-        JavaService javaService = JavaService.getInstance(project);
-
-        // 获取所有映射的Java文件路径
-        for (String javaFilePath : getCacheConfig().getJavaFileToSqlIds().keySet()) {
-            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(javaFilePath);
-            if (file == null || !file.exists()) continue;
-
-            indicator.setText("处理Java文件: " + file.getPath());
-            PsiJavaFile psiFile = (PsiJavaFile) PsiManager.getInstance(project).findFile(file);
-            if (psiFile != null) {
-                for (var cls : psiFile.getClasses()) {
-                    javaService.processClass(cls);
-                }
-            }
-
-            progress += step;
-            if (progress > 1.0) progress = 1.0;
-            indicator.setFraction(progress);
-        }
-    }
-
-    /**
-     * 增量刷新缓存（只刷新变更的文件）
-     */
-    public void performIncrementalRefresh() {
-        ProgressManager.getInstance().run(new Task.Backgroundable(project, "增量刷新MyBatis缓存") {
-            @Override
-            public void run(@NotNull ProgressIndicator indicator) {
-                indicator.setText("正在检查变更文件...");
-                scanForFileChanges(); // 调用父类的文件变更扫描
-                indicator.setText("增量刷新完成");
-                incrementCacheVersion();
-                MyBatisCachePersistenceManager.manualSaveCache(project);
-            }
-        });
-    }
-
-    /**
-     * 增加缓存版本号
-     */
-    public void incrementCacheVersion() {
-        cacheVersion.incrementAndGet();
-    }
-
-    /**
-     * 获取当前缓存版本号
-     */
-    public long getCurrentCacheVersion() {
-        return cacheVersion.get();
-    }
-
-    /**
-     * 检查缓存是否需要更新（与其他模块同步）
-     */
-    public boolean isCacheUpToDate(long lastKnownVersion) {
-        return cacheVersion.get() == lastKnownVersion;
     }
 
 

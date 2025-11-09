@@ -80,9 +80,10 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
      */
     public boolean isTheElement(@NotNull PsiElement element) {
         LOG.debug("Checking if element is target type: " + element.getClass().getSimpleName());
-        return element instanceof XmlToken
-                && isTargetType((XmlToken) element)
-                && DomUtils.isMybatisFile(element.getContainingFile());
+        boolean flag1 = element instanceof XmlToken;
+        boolean flag2 = isTargetType((XmlToken) element);
+        boolean flag3 = DomUtils.isMybatisFile(element.getContainingFile());
+        return flag1 && flag2 && flag3;
     }
 
     /**
@@ -165,7 +166,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             Optional<PsiMethod[]> methods = JavaUtils.findMethods(project, namespace, id);
 
             // 如果直接查找失败，尝试去掉namespace末尾的Mapper后缀再查找
-            if (!methods.isPresent() || methods.get().length == 0) {
+            if (methods.isEmpty() || methods.get().length == 0) {
                 int mapperIndex = namespace.lastIndexOf("Mapper");
                 if (mapperIndex != -1 && mapperIndex == namespace.length() - 6) {
                     String shortNamespace = namespace.substring(0, mapperIndex);

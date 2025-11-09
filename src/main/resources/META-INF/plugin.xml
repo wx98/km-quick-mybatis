@@ -38,6 +38,10 @@
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService"
         />
+        <projectService
+                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService"
+                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService"
+        />
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
@@ -67,8 +71,8 @@
         />
         <!-- 缓存管理器服务 -->
         <projectService
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.DefaultMyBatisCacheManager"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.DefaultMyBatisCacheManager"
+                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
+                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
         />
         <!-- 缓存管理器服务 -->
         <projectService

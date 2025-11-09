@@ -16,21 +16,34 @@ import java.util.concurrent.ConcurrentHashMap;
  * MyBatis缓存配置核心类，管理SQL ID与Java/XML元素的映射关系
  */
 public class MyBatisCacheConfig {
-    // 单例模式（按项目隔离缓存）
+    /**
+     * 单例模式（按项目隔离缓存）
+     */
     private static final Map<Project, MyBatisCacheConfig> INSTANCES = new ConcurrentHashMap<>();
-    // ========================= 核心缓存数据结构 =========================
-    // 1. SQL ID -> 关联的Java元素（一对多）
+    /**
+     * 1. SQL ID -> 关联的Java元素（一对多）
+     */
     private final Map<String, Set<JavaElementInfo>> sqlIdToJavaElements = new ConcurrentHashMap<>();
-    // 2. SQL ID -> 关联的XML元素（一对多）
+    /**
+     * 2. SQL ID -> 关联的XML元素（一对多）
+     */
     private final Map<String, Set<XmlElementInfo>> sqlIdToXmlElements = new ConcurrentHashMap<>();
-    // 3. Java文件路径 -> 该文件涉及的所有SQL ID（一对多）
+    /**
+     * 3. Java文件路径 -> 该文件涉及的所有SQL ID（一对多）
+     */
     private final Map<String, Set<String>> javaFileToSqlIds = new ConcurrentHashMap<>();
-    // 4. XML文件路径 -> 该文件包含的所有SQL ID（一对多）
+    /**
+     * 4. XML文件路径 -> 该文件包含的所有SQL ID（一对多）
+     */
     private final Map<String, Set<String>> xmlFileToSqlIds = new ConcurrentHashMap<>();
-    // 5. 文件摘要缓存（用于后续定时校验文件是否变更）
+    /**
+     * 5. 文件摘要缓存（用于后续定时校验文件是否变更）
+     */
     private final Map<String, String> fileDigestCache = new ConcurrentHashMap<>();
 
-    // ========================= 构造器（私有，单例） =========================
+    /**
+     * 私有构造器
+     */
     private MyBatisCacheConfig() {
     }
 
