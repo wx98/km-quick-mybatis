@@ -87,7 +87,12 @@ public interface MyBatisCacheManager {
      */
     void clearXmlFileCache(@NotNull String xmlFilePath);
 
-    public void clearFileCache(@NotNull String filePath);
+    /**
+     * 清除指定文件缓存
+     *
+     * @param filePath 文件路径
+     */
+    void clearFileCache(@NotNull String filePath);
 
     /**
      * 清除所有缓存
@@ -100,7 +105,15 @@ public interface MyBatisCacheManager {
      * @param file 要标记失效的文件
      */
     void invalidateFileCache(@NotNull PsiFile file);
+
+
+    /**
+     * 标记文件缓存失效
+     *
+     * @param filePath 文件路径
+     */
     void invalidateFileCache(@NotNull String filePath);
+
     /**
      * 检查文件缓存是否有效
      *

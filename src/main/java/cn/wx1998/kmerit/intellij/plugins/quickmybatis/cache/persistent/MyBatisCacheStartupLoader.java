@@ -1,6 +1,6 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.DefaultMyBatisCacheManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.ProjectActivity;
 import kotlin.Unit;
@@ -10,12 +10,14 @@ import org.jetbrains.annotations.Nullable;
 
 public class MyBatisCacheStartupLoader extends MyBatisCachePersistenceManager implements ProjectActivity {
 
+    private long lastKnownVersion;
+
     @Nullable
     @Override
     public Object execute(@NotNull Project project, @NotNull Continuation<? super Unit> continuation) {
         loadCache(project);
 
-        DefaultMyBatisCacheManager cacheManager = DefaultMyBatisCacheManager.getInstance(project);
+        MyBatisCacheManagerDefault cacheManager = MyBatisCacheManagerDefault.getInstance(project);
         this.lastKnownVersion = cacheManager.getCurrentCacheVersion();
 
         // 注册版本检查定时任务
@@ -23,10 +25,6 @@ public class MyBatisCacheStartupLoader extends MyBatisCachePersistenceManager im
 
         return null;
     }
-
-
-    private long lastKnownVersion;
-
 
     /**
      * 定时检查缓存版本是否更新
@@ -41,7 +39,7 @@ public class MyBatisCacheStartupLoader extends MyBatisCachePersistenceManager im
                     return;
                 }
 
-                DefaultMyBatisCacheManager cacheManager = DefaultMyBatisCacheManager.getInstance(project);
+                MyBatisCacheManagerDefault cacheManager = MyBatisCacheManagerDefault.getInstance(project);
 
                 if (!cacheManager.isCacheUpToDate(lastKnownVersion)) {
                     // 缓存已更新，执行相应的处理逻辑

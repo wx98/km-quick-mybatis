@@ -39,7 +39,14 @@ public interface MyBatisXmlParser {
          *
          * @return 命名空间字符串
          */
-        String getNamespace();
+        String getNamespaceName();
+
+        /**
+         * 获取命名空间
+         *
+         * @return 命名空间字符串
+         */
+        XmlTag getNamespace();
 
         /**
          * 获取根Mapper节点

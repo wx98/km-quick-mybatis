@@ -211,7 +211,7 @@ public class MyBatisXmlParserTest extends BasePlatformTestCase {
         // 根据代码中的实现，推荐的解析器应该是EnhancedMyBatisXmlParser
         assertNotNull("推荐的解析器不应该为null", parser);
         assertTrue("推荐的解析器应该是EnhancedMyBatisXmlParser或其子类",
-                parser instanceof DefaultMyBatisXmlParser);
+                parser instanceof MyBatisXmlParserDefault);
     }
 
     /**
@@ -225,13 +225,13 @@ public class MyBatisXmlParserTest extends BasePlatformTestCase {
         MyBatisXmlParser defaultParser = MyBatisXmlParserFactory.createDefaultParser(project);
         assertNotNull("默认解析器不应该为null", defaultParser);
         assertTrue("默认解析器应该是DefaultMyBatisXmlParser或其子类",
-                defaultParser instanceof DefaultMyBatisXmlParser);
+                defaultParser instanceof MyBatisXmlParserDefault);
 
         // 创建增强解析器
         MyBatisXmlParser enhancedParser = MyBatisXmlParserFactory.getRecommendedParser(project);
         assertNotNull("增强解析器不应该为null", enhancedParser);
         assertTrue("增强解析器应该是EnhancedMyBatisXmlParser或其子类",
-                enhancedParser instanceof DefaultMyBatisXmlParser);
+                enhancedParser instanceof MyBatisXmlParserDefault);
 
         // 验证两种解析器不是同一个实例
         assertNotSame("不同类型的解析器应该是不同的实例", defaultParser, enhancedParser);

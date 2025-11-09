@@ -21,7 +21,7 @@ public final class MyBatisXmlParserFactory {
      * @return 默认的 MyBatis XML 解析器
      */
     public static MyBatisXmlParser createDefaultParser(@NotNull Project project) {
-        return DefaultMyBatisXmlParser.create(project);
+        return MyBatisXmlParserDefault.create(project);
     }
 
 
