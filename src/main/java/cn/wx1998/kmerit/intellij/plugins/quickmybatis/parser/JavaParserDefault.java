@@ -7,7 +7,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
-import com.intellij.psi.util.PsiTreeUtil;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,9 +47,6 @@ public class JavaParserDefault implements JavaParser {
             return null;
         }
 
-        // 验证结构并同步到全局缓存
-        ReadAction.run(() -> validateJavaStructure(file));
-
         // 创建解析结果
         return ReadAction.compute(() -> new DefaultJavaParseResult(file));
     }
@@ -63,13 +59,6 @@ public class JavaParserDefault implements JavaParser {
             VirtualFile virtualFile = file.getVirtualFile();
             if (virtualFile == null) {
                 LOG.debug("文件不存在，验证失败: " + fileName);
-                return false;
-            }
-
-            // 2. 检查是否有语法错误（PsiErrorElement 表示语法错误）
-            PsiErrorElement[] errorElements = PsiTreeUtil.getChildrenOfType(file, PsiErrorElement.class);
-            if (errorElements != null && errorElements.length > 0) {
-                LOG.debug("文件存在语法错误，验证失败: " + fileName + "，错误数: " + errorElements.length);
                 return false;
             }
             // 3. 检查是否包含至少一个有效类/接口（非匿名类、非局部类）
@@ -205,38 +194,41 @@ public class JavaParserDefault implements JavaParser {
             LOG.debug("初始化Java解析结果映射: " + file.getName());
             PsiClass[] psiClasses = file.getClasses();
             for (PsiClass cls : psiClasses) {
+                String className = cls.getQualifiedName();
                 // 分类存储类和接口
                 if (cls.isInterface()) {
-                    interfaces.put(cls.getQualifiedName(), cls);
+                    interfaces.put(className, cls);
                     PsiMethod[] methods = cls.getMethods();
                     for (PsiMethod method : methods) {
-                        String methodKey = cls.getQualifiedName() + "." + method.getName();
+                        String methodKey = className + "." + method.getName();
                         interfaceMethodsByName.computeIfAbsent(methodKey, k -> new ArrayList<>()).add(method);
                     }
-                } else {
-                    classes.put(cls.getQualifiedName(), cls);
+                } else if (!cls.isEnum() && !cls.isAnnotationType()) {
+                    classes.put(className, cls);
                     PsiMethod[] methods = cls.getMethods();
                     for (PsiMethod method : methods) {
-                        String methodKey = cls.getQualifiedName() + "." + method.getName();
+                        String methodKey = className + "." + method.getName();
                         // 按方法名分组（处理重载）
                         classMethodsByName.computeIfAbsent(methodKey, k -> new ArrayList<>()).add(method);
-                        PsiCodeBlock body = method.getBody();
-                        if (body == null) return; // 抽象方法或接口方法无方法体
-                        Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
-                        for (PsiMethodCallExpression callExpr : childrenOfType) {
-                            JavaService javaService = JavaService.getInstance(body.getProject());
-                            if (!javaService.isSqlSessionMethod(callExpr)) {
-                                continue;
-                            }
-                            PsiExpressionList argumentList = callExpr.getArgumentList();
-                            PsiExpression[] expressions = argumentList.getExpressions();
-                            if (expressions == null || expressions.length < 1) {
-                                continue;
-                            }
-                            PsiExpression expression = expressions[0];
-                            String key = JavaService.parseExpression(expression);
-                            classMethodCall.computeIfAbsent(key, k -> new ArrayList<>()).add(callExpr);
-                        }
+//                        PsiCodeBlock body = method.getBody();
+//                        if (body == null) continue;
+//                        Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
+//                        for (PsiMethodCallExpression callExpr : childrenOfType) {
+//                            JavaService javaService = JavaService.getInstance(body.getProject());
+//                            if (!javaService.isSqlSessionMethod(method)) {
+//                                continue;
+//                            }
+//                            PsiExpressionList argumentList = callExpr.getArgumentList();
+//                            PsiExpression[] expressions = argumentList.getExpressions();
+//                            if (expressions == null || expressions.length < 1) {
+//                                continue;
+//                            }
+//                            PsiExpression expression = expressions[0];
+//                            String key = JavaService.parseExpression(expression);
+//                            if (key != null && !key.isEmpty()) {
+//                                classMethodCall.computeIfAbsent(key, k -> new ArrayList<>()).add(callExpr);
+//                            }
+//                        }
                     }
                 }
                 PsiField[] fields = cls.getFields();
@@ -246,8 +238,11 @@ public class JavaParserDefault implements JavaParser {
                     if ("java.lang.String".equals(canonicalText)) {
                         PsiExpression initializer = field.getInitializer();
                         String key = JavaService.parseExpression(initializer);
-                        if (key != null && !"".equals(key)) {
-                            staticStringField.computeIfAbsent(key, k -> new ArrayList<>()).add(field);
+
+                        if (key != null && !key.isEmpty()) {
+                            if (className != null && key.startsWith(className)) {
+                                staticStringField.computeIfAbsent(key, k -> new ArrayList<>()).add(field);
+                            }
                         }
                     }
                 }

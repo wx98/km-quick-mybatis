@@ -1,10 +1,8 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.services;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginSettings;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.DomUtils;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.XmlTagLocator;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -13,9 +11,7 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
-import com.intellij.psi.impl.PsiDocumentManagerBase;
 import com.intellij.psi.xml.XmlFile;
-import com.intellij.psi.xml.XmlTag;
 import com.intellij.ui.classFilter.ClassFilter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -153,9 +149,6 @@ public class XmlService implements Serializable {
         String template = setting.getClassNamingRule();
         return template.replace("${className}", className);
     }
-
-
-
 
 
 }

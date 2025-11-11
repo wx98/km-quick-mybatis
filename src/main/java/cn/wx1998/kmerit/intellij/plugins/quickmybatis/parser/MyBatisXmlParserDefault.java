@@ -64,10 +64,6 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
             LOG.warn("无效的MyBatis XML文件: " + file.getName());
             return null;
         }
-
-        // 验证结构并解析标签（同步到全局缓存）
-        ReadAction.run(() -> validateMapperStructure(file));
-
         // 创建解析结果
         return ReadAction.compute(() -> new DefaultBatisParseResult(file));
     }

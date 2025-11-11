@@ -46,7 +46,7 @@ repositories {
     maven { url = uri("https://dl.bintray.com/jetbrains/intellij-plugin-service") }
     maven { url = uri("https://dl.bintray.com/jetbrains/intellij-third-party-dependencies/") }
 
-    maven { url = uri("https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/releases" )}
+    maven { url = uri("https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/releases") }
     maven { url = uri("https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/snapshots") }
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {

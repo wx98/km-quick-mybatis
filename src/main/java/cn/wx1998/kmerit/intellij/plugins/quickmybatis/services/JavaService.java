@@ -1,9 +1,7 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.services;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginSettings;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.XmlTagLocator;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -12,12 +10,10 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
-import com.intellij.psi.impl.PsiDocumentManagerBase;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
 import com.intellij.ui.classFilter.ClassFilter;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -28,11 +24,6 @@ import java.util.List;
 
 public class JavaService implements Serializable {
 
-    // 获取日志记录器实例
-    private static final Logger LOG = Logger.getInstance(JavaService.class);
-
-    @Serial
-    private static final long serialVersionUID = 1L;
     // 元素类型常量
     @NonNls
     public static final String TYPE_CLASS = "class";
@@ -46,6 +37,10 @@ public class JavaService implements Serializable {
     public static final String TYPE_FIELD = "field";
     @NonNls
     public static final String TYPE_METHOD_CALL = "methodCall";
+    // 获取日志记录器实例
+    private static final Logger LOG = Logger.getInstance(JavaService.class);
+    @Serial
+    private static final long serialVersionUID = 1L;
     private final Project project;
     private final MyBatisSetting setting; // 配置类，管理命名规则
 
@@ -68,57 +63,6 @@ public class JavaService implements Serializable {
     public static JavaService getInstance(@NotNull Project project) {
         return project.getService(JavaService.class);
     }
-
-    public Project getProject() {
-        return project;
-    }
-
-
-    /**
-     * 获取项目中所有的MyBatis XML文件
-     */
-    public List<PsiJavaFile> getAllJavaFiles() {
-        LOG.debug("Finding all Java files in project");
-        return ReadAction.compute(() -> {
-            List<PsiJavaFile> mybatisFiles = new ArrayList<>();
-            for (VirtualFile contentRoot : ProjectRootManager.getInstance(project).getContentSourceRoots()) {
-                if (contentRoot != null && contentRoot.isDirectory() && contentRoot.isValid()) {
-                    findJavaFilesRecursively(contentRoot, mybatisFiles);
-                }
-            }
-            LOG.debug("Total Java files found: " + mybatisFiles.size());
-            return mybatisFiles;
-        });
-    }
-
-    /**
-     * 递归查找 Java 文件
-     */
-    private void findJavaFilesRecursively(VirtualFile directory, List<PsiJavaFile> result) {
-        if (directory == null || !directory.isDirectory() || !directory.isValid()) return;
-
-        for (VirtualFile file : directory.getChildren()) {
-            if (file.isDirectory()) {
-                findJavaFilesRecursively(file, result);
-            } else if (file.getName().toLowerCase().endsWith(".java")) {
-                PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
-                ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
-                if (fileIndex.isExcluded(file)) {
-                    LOG.debug("忽略被排除的文件: " + file.getPath());
-                    continue;
-                }
-                if (!fileIndex.isInSourceContent(file)) {
-                    LOG.debug("忽略非源码目录文件: " + file.getPath());
-                    continue;
-                }
-                if (psiFile instanceof PsiJavaFile) {
-                    result.add((PsiJavaFile) psiFile);
-                    LOG.debug("Found Java file: " + file.getPath());
-                }
-            }
-        }
-    }
-
 
     /**
      * 计算表达式的值
@@ -219,6 +163,55 @@ public class JavaService implements Serializable {
         }
     }
 
+    public Project getProject() {
+        return project;
+    }
+
+    /**
+     * 获取项目中所有的MyBatis XML文件
+     */
+    public List<PsiJavaFile> getAllJavaFiles() {
+        LOG.debug("Finding all Java files in project");
+        return ReadAction.compute(() -> {
+            List<PsiJavaFile> mybatisFiles = new ArrayList<>();
+            for (VirtualFile contentRoot : ProjectRootManager.getInstance(project).getContentSourceRoots()) {
+                if (contentRoot != null && contentRoot.isDirectory() && contentRoot.isValid()) {
+                    findJavaFilesRecursively(contentRoot, mybatisFiles);
+                }
+            }
+            LOG.debug("Total Java files found: " + mybatisFiles.size());
+            return mybatisFiles;
+        });
+    }
+
+    /**
+     * 递归查找 Java 文件
+     */
+    private void findJavaFilesRecursively(VirtualFile directory, List<PsiJavaFile> result) {
+        if (directory == null || !directory.isDirectory() || !directory.isValid()) return;
+
+        for (VirtualFile file : directory.getChildren()) {
+            if (file.isDirectory()) {
+                findJavaFilesRecursively(file, result);
+            } else if (file.getName().toLowerCase().endsWith(".java")) {
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
+                ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
+                if (fileIndex.isExcluded(file)) {
+                    LOG.debug("忽略被排除的文件: " + file.getPath());
+                    continue;
+                }
+                if (!fileIndex.isInSourceContent(file)) {
+                    LOG.debug("忽略非源码目录文件: " + file.getPath());
+                    continue;
+                }
+                if (psiFile instanceof PsiJavaFile) {
+                    result.add((PsiJavaFile) psiFile);
+                    LOG.debug("Found Java file: " + file.getPath());
+                }
+            }
+        }
+    }
+
     /**
      * 判断方法是否是 SqlSession 的方法
      *
@@ -245,66 +238,6 @@ public class JavaService implements Serializable {
         }
         return false;
     }
-
-
-    /**
-     * 基于类名计算 SQL ID（结合配置的命名规则）
-     */
-    @Nullable
-    private String calculateClassSqlId(@NotNull PsiClass psiClass) {
-        String className = psiClass.getQualifiedName();
-        if (className == null) return null;
-
-        // 从配置获取类级别的命名规则模板（默认："${className}"）
-        String template = setting.getClassNamingRule();
-        return template.replace("${className}", className);
-    }
-
-    /**
-     * 基于类名 + 方法名计算 SQL ID
-     */
-    @Nullable
-    private String calculateMethodSqlId(@NotNull PsiMethod psiMethod) {
-        PsiClass containingClass = psiMethod.getContainingClass();
-        if (containingClass == null) return null;
-
-        String className = containingClass.getQualifiedName();
-        String methodName = psiMethod.getName();
-        if (className == null || methodName == null) return null;
-
-        // 从配置获取方法级别的命名规则模板（默认："${className}.${methodName}"）
-        String template = setting.getMethodNamingRule();
-        return template.replace("${className}", className).replace("${methodName}", methodName);
-    }
-
-    /**
-     * 基于类名 + 字段名计算 SQL ID
-     */
-    @Nullable
-    private String calculateFieldSqlId(@NotNull PsiField psiField) {
-        PsiClass containingClass = psiField.getContainingClass();
-        if (containingClass == null) return null;
-
-        String className = containingClass.getQualifiedName();
-        String fieldName = psiField.getName();
-        if (className == null || fieldName == null) return null;
-
-        // 从配置获取字段级别的命名规则模板（默认："${className}.${fieldName}"）
-        String template = setting.getFieldNamingRule();
-        return template.replace("${className}", className).replace("${fieldName}", fieldName);
-    }
-
-    public boolean isSqlSessionMethod(@NotNull PsiMethodCallExpression methodCall) {
-        PsiMethod method = methodCall.resolveMethod();
-        if (method == null) return false;
-
-        // 获取方法名（如 "selectOne", "insert" 等）
-        String methodName = method.getName();
-
-        // 从配置获取需要匹配的方法名列表（默认：select|insert|update|delete）
-        return setting.getSqlSessionMethodPatterns().stream().anyMatch(methodName::matches);
-    }
-
 
     /**
      * 校验 Psi 元素是否有效（非空、存在于文件中）

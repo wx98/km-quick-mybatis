@@ -81,7 +81,10 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
     public boolean isTheElement(@NotNull PsiElement element) {
         LOG.debug("Checking if element is target type: " + element.getClass().getSimpleName());
         boolean flag1 = element instanceof XmlToken;
-        boolean flag2 = isTargetType((XmlToken) element);
+        boolean flag2 = false;
+        if (element instanceof XmlToken xmlToken) {
+            flag2 = isTargetType(xmlToken);
+        }
         boolean flag3 = DomUtils.isMybatisFile(element.getContainingFile());
         return flag1 && flag2 && flag3;
     }

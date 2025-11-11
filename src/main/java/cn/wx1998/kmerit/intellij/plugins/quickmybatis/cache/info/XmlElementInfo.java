@@ -55,6 +55,14 @@ public class XmlElementInfo implements Comparable<XmlElementInfo> {
         this.filePath = filePath;
     }
 
+    public int getLineNumber() {
+        return lineNumber;
+    }
+
+    public void setLineNumber(int lineNumber) {
+        this.lineNumber = lineNumber;
+    }
+
     public String getTagName() {
         return tagName;
     }
@@ -110,5 +118,10 @@ public class XmlElementInfo implements Comparable<XmlElementInfo> {
         }
         // filePath 相同则按行号排序
         return Integer.compare(this.lineNumber, o.lineNumber);
+    }
+
+    @Override
+    public String toString() {
+        return "XmlElementInfo{filePath='" + filePath + "', lineNumber=" + lineNumber + ", tagName='" + tagName + "', sqlId='" + sqlId + "', xpath='" + xpath + "'}";
     }
 }
