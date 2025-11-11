@@ -4,6 +4,7 @@ import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
@@ -56,7 +57,8 @@ public class XmlTagLocator {
 
         // 获取行号（文档行号从 0 开始，显示时通常 +1）
         PsiDocumentManager documentManager = PsiDocumentManager.getInstance(element.getProject());
-        int startOffset = element.getTextRange().getStartOffset();
+        TextRange textRange = element.getTextRange();
+        int startOffset = textRange.getStartOffset();
         int lineNumber = Objects.requireNonNull(documentManager.getDocument(containingFile)).getLineNumber(startOffset) + 1;
 
         String xpath = generateXPathForPsiElement(element);
@@ -167,21 +169,65 @@ public class XmlTagLocator {
             LOG.debug("不是XML文件: " + info.getFilePath());
             return null;
         }
+        XmlFile xmlFile = (XmlFile) psiFile;
 
         // 3. 获取根标签
-        XmlDocument document = ((XmlFile) psiFile).getDocument();
+        XmlDocument document = xmlFile.getDocument();
         if (document == null) {
             LOG.debug("XML文件无文档节点: " + info.getFilePath());
+            // 尝试使用另一种方式获取根标签
+            XmlTag[] tags = xmlFile.getRootTag().getSubTags();
+            if (tags.length > 0) {
+                XmlTag rootTag = tags[0];
+                if (info.getTagName().equalsIgnoreCase("mapper") && info.getXpath().equals("/mapper")) {
+                    // 如果是根节点mapper标签的查找请求，直接返回根标签
+                    LOG.debug("直接返回根标签mapper: " + info.getFilePath());
+                    return rootTag;
+                }
+            }
             return null;
         }
+
         XmlTag rootTag = document.getRootTag();
         if (rootTag == null) {
             LOG.debug("XML文件无 root 标签: " + info.getFilePath());
             return null;
         }
 
-        // 4. 使用XPath查找目标标签
-        return findTagByXPath(rootTag, info.getXpath());
+        // 4. 特殊处理根节点mapper标签的情况
+        if (info.getTagName().equalsIgnoreCase("mapper") && info.getXpath().equals("/mapper")) {
+            LOG.debug("匹配到根节点mapper标签: " + info.getFilePath());
+            return rootTag;
+        }
+
+        // 5. 首先尝试使用XPath查找目标标签
+        XmlTag tagByXPath = findTagByXPath(rootTag, info.getXpath());
+        if (tagByXPath != null) {
+            return tagByXPath;
+        }
+
+        // 6. 如果XPath查找失败，尝试使用标签名和SQL ID查找
+        LOG.debug("XPath查找失败，尝试使用标签名和SQL ID查找: " + info.getTagName() + "@" + info.getSqlId());
+        XmlTag tagByIdAndName = findTagByIdAndName(rootTag, info.getTagName(), info.getSqlId());
+        if (tagByIdAndName != null) {
+            return tagByIdAndName;
+        }
+
+        // 7. 针对行号为0的情况，尝试直接返回根标签
+        if (info.getLineNumber() == 0 && info.getTagName().equalsIgnoreCase("mapper")) {
+            LOG.debug("行号为0且标签名为mapper，尝试返回根标签: " + info.getFilePath());
+            return rootTag;
+        }
+
+        // 8. 如果上述方法都失败，尝试使用行号作为最后手段（但跳过行号为0的情况）
+        if (info.getLineNumber() > 0) {
+            LOG.debug("标签名和SQL ID查找失败，尝试使用行号查找: " + info.getLineNumber());
+            return findTagByLineNumber(xmlFile, info.getLineNumber());
+        }
+
+        // 9. 最后的后备方案：尝试查找文件中的第一个匹配标签名的标签
+        LOG.debug("所有方法都失败，尝试查找第一个匹配标签名的标签: " + info.getTagName());
+        return findFirstMatchingTagName(xmlFile, info.getTagName());
     }
 
     /**
@@ -219,7 +265,8 @@ public class XmlTagLocator {
         // 收集所有同名子标签
         List<XmlTag> candidates = new ArrayList<>();
         for (XmlTag child : parent.getSubTags()) {
-            if (child.getName().equals(tagName)) {
+            // 标签名比较忽略大小写，增加匹配成功率
+            if (child.getName().equalsIgnoreCase(tagName)) {
                 candidates.add(child);
             }
         }
@@ -239,6 +286,13 @@ public class XmlTagLocator {
                     return candidate;
                 }
             }
+            // 如果精确匹配失败，尝试宽松匹配（忽略大小写）
+            for (XmlTag candidate : candidates) {
+                String idValue = candidate.getAttributeValue("id");
+                if (idValue != null && targetId.equalsIgnoreCase(idValue)) {
+                    return candidate;
+                }
+            }
         } else {
             // 索引匹配（数字）
             try {
@@ -248,6 +302,102 @@ public class XmlTagLocator {
                 }
             } catch (NumberFormatException e) {
                 LOG.warn("无效的XPath索引格式: " + condition);
+            }
+        }
+
+        // 如果所有条件匹配都失败，返回第一个匹配标签名的结果作为后备
+        return candidates.get(0);
+    }
+
+    /**
+     * 根据标签名和SQL ID查找标签
+     */
+    @Nullable
+    private static XmlTag findTagByIdAndName(@NotNull XmlTag rootTag, @NotNull String tagName, @NotNull String sqlId) {
+        // 递归搜索整个XML树
+        return findTagByIdAndNameRecursive(rootTag, tagName, sqlId);
+    }
+
+    /**
+     * 递归搜索标签
+     */
+    @Nullable
+    private static XmlTag findTagByIdAndNameRecursive(@NotNull XmlTag currentTag, @NotNull String targetTagName, @NotNull String targetSqlId) {
+        // 检查当前标签
+        if (currentTag.getName().equalsIgnoreCase(targetTagName)) {
+            String idAttr = currentTag.getAttributeValue("id");
+            if (idAttr != null && (targetSqlId.equals(idAttr) || targetSqlId.endsWith("." + idAttr))) {
+                return currentTag;
+            }
+        }
+
+        // 递归检查子标签
+        for (XmlTag child : currentTag.getSubTags()) {
+            XmlTag result = findTagByIdAndNameRecursive(child, targetTagName, targetSqlId);
+            if (result != null) {
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 根据行号查找标签
+     */
+    @Nullable
+    private static XmlTag findTagByLineNumber(@NotNull XmlFile xmlFile, int lineNumber) {
+        PsiDocumentManager documentManager = PsiDocumentManager.getInstance(xmlFile.getProject());
+        var document = documentManager.getDocument(xmlFile);
+        if (document == null) {
+            return null;
+        }
+
+        try {
+            // 将行号转换为偏移量（注意：文档行号从0开始，而我们的行号从1开始）
+            int adjustedLineNumber = Math.max(0, lineNumber - 1);
+            if (adjustedLineNumber >= document.getLineCount()) {
+                return null;
+            }
+
+            int offset = document.getLineStartOffset(adjustedLineNumber);
+
+            // 查找该位置的元素
+            PsiElement element = xmlFile.findElementAt(offset);
+            if (element == null) {
+                return null;
+            }
+
+            // 向上查找XmlTag
+            while (element != null && !(element instanceof XmlTag)) {
+                element = element.getParent();
+            }
+
+            return element != null ? (XmlTag) element : null;
+        } catch (Exception e) {
+            LOG.warn("根据行号查找标签失败: " + lineNumber, e);
+            return null;
+        }
+    }
+
+    /**
+     * 查找文件中第一个匹配指定标签名的标签
+     */
+    @Nullable
+    private static XmlTag findFirstMatchingTagName(@NotNull XmlFile xmlFile, @NotNull String tagName) {
+        // 先检查根标签
+        XmlDocument document = xmlFile.getDocument();
+        if (document != null) {
+            XmlTag rootTag = document.getRootTag();
+            if (rootTag != null && rootTag.getName().equalsIgnoreCase(tagName)) {
+                return rootTag;
+            }
+        }
+
+        // 遍历所有根标签
+        for (XmlTag tag : xmlFile.getRootTag().getSubTags()) {
+            if (tag.getName().equalsIgnoreCase(tagName)) {
+                return tag;
             }
         }
 

@@ -69,6 +69,10 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
                     Set<XmlElementInfo> xmlElementInfos = cacheConfig.getXmlElementsBySqlId(sqlId);
                     for (XmlElementInfo xmlElementInfo : xmlElementInfos) {
                         XmlTag xmlTagByInfo = XmlTagLocator.findXmlTagByInfo(xmlElementInfo, project);
+                        if (xmlTagByInfo == null) {
+                            LOG.debug("xmlElementInfo 未找到： " + xmlElementInfo);
+                            continue;
+                        }
                         processor.process(xmlTagByInfo);
                     }
                 }

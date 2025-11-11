@@ -115,4 +115,9 @@ public class JavaElementInfo implements Comparable<JavaElementInfo> {
         return Integer.compare(this.lineNumber, o.lineNumber);
     }
 
+
+    @Override
+    public String toString() {
+        return "JavaElementInfo{filePath='" + filePath + "', lineNumber=" + lineNumber + ", tagName='" + elementType + "', sqlId='" + sqlId + "', xpath='" + xpath + "'}";
+    }
 }

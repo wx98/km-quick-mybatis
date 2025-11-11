@@ -9,6 +9,7 @@ import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParser;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParserFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TargetMethodsHolder;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.XmlTagLocator;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -27,8 +28,13 @@ import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
 import com.intellij.psi.*;
+import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.search.searches.MethodReferencesSearch;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlTag;
+import com.intellij.util.Processor;
+import com.intellij.util.Query;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -426,10 +432,13 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 double[] progress = {0.0};
 
                 indicator.setText("正在重新解析所有MyBatis文件...");
-                reparseAllMyBatisFiles(indicator, 0.5, progress);
+                reparseAllMyBatisFiles(indicator, 0.3, progress);
 
                 indicator.setText("正在处理Java文件...");
-                processAllJavaFiles(indicator, 0.5, progress);
+                processAllJavaFiles(indicator, 0.3, progress);
+
+                indicator.setText("正在扫描MyBatis方法调用...");
+                processAllJavaMyBatisMethodCall(indicator, 0.3, progress);
 
                 indicator.setText("正在更新缓存版本...");
                 incrementCacheVersion();
@@ -516,6 +525,86 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             // 设置进度
             indicator.setFraction(progress[0]);
         }
+    }
+
+
+    /**
+     * 处理并缓存项目中所有MyBatis相关的方法调用。
+     * 该方法会在后台线程中执行，并更新进度条。
+     *
+     * @param indicator  进度指示器
+     * @param proportion 分配给该任务的总进度比例
+     * @param progress   进度数组，用于与外部进度同步
+     */
+    public void processAllJavaMyBatisMethodCall(@NotNull ProgressIndicator indicator, double proportion, double[] progress) {
+        indicator.setText("正在搜索MyBatis方法调用...");
+        indicator.setText2("准备搜索...");
+
+        TargetMethodsHolder targetHolder = TargetMethodsHolder.getInstance(project);
+        Set<PsiMethod> targetMethods = targetHolder.getTargetMethods();
+
+        if (targetMethods.isEmpty()) {
+            indicator.setText("未找到任何目标方法，跳过搜索。");
+            progress[0] += proportion;
+            indicator.setFraction(progress[0]);
+            return;
+        }
+
+        // 计算每个方法的进度步长
+        double step = proportion / targetMethods.size();
+
+        // 这里假设该方法已经在一个后台任务中被调用
+        for (PsiMethod targetMethod : targetMethods) {
+            // 更新进度信息
+            indicator.setText2(String.format("正在搜索方法: %s", targetMethod.getName()));
+
+            // 搜索项目中所有对该方法的调用
+            Query<PsiReference> query = MethodReferencesSearch.search(targetMethod, GlobalSearchScope.allScope(project), true);
+
+            // 使用 forEach 结合 Processor 来处理每个搜索结果
+            query.forEach(new Processor<PsiReference>() {
+                @Override
+                public boolean process(PsiReference psiReference) {
+                    // 检查用户是否点击了取消
+                    if (indicator.isCanceled()) {
+                        return false; // 返回 false 停止遍历
+                    }
+
+                    PsiElement element = psiReference.getElement();
+                    PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
+                    if (callExpr != null) {
+                        PsiExpressionList argumentList = callExpr.getArgumentList();
+
+                        PsiExpression[] arguments = argumentList.getExpressions();
+                        PsiExpression firstArgument = arguments[0];
+                        String sqlId = JavaService.parseExpression(firstArgument);
+
+                        if (sqlId != null && !sqlId.isEmpty()) {
+                            syncToCacheManager(sqlId, callExpr);
+                        }
+
+                    }
+                    return true; // 返回 true 继续遍历
+                }
+
+            });
+
+            // 更新进度
+            progress[0] += step;
+            indicator.setFraction(progress[0]);
+        }
+
+        indicator.setText("MyBatis方法调用搜索完成。");
+    }
+
+    private void syncToCacheManager(String sqlId, PsiMethodCallExpression element) {
+        // 检查是否有id属性
+        ReadAction.run(() -> {
+            PsiElement originalElement = element.getOriginalElement();
+
+            JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_CLASS);
+            cacheConfig.addJavaElementMapping(sqlId, javaElementInfo);
+        });
     }
 
     /**
@@ -611,15 +700,15 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     cacheConfig.addJavaElementMapping(key, javaElementInfo);
                 }
             });
-            Map<String, List<PsiMethod>> allClassMethods = result.getAllClassMethods();
-            allClassMethods.forEach((key, list) -> {
-                list.forEach(classMethod -> {
-                    JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
-                    if (javaElementInfo != null) {
-                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
-                    }
-                });
-            });
+//            Map<String, List<PsiMethod>> allClassMethods = result.getAllClassMethods();
+//            allClassMethods.forEach((key, list) -> {
+//                list.forEach(classMethod -> {
+//                    JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
+//                    if (javaElementInfo != null) {
+//                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+//                    }
+//                });
+//            });
             Map<String, List<PsiMethod>> allInterfaceMethods = result.getAllInterfaceMethods();
             allInterfaceMethods.forEach((key, list) -> {
                 list.forEach(psiMethod -> {
