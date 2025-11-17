@@ -9,8 +9,8 @@ import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParser;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParserFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TagLocator;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TargetMethodsHolder;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.XmlTagLocator;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
@@ -553,46 +553,46 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 计算每个方法的进度步长
         double step = proportion / targetMethods.size();
 
-        // 这里假设该方法已经在一个后台任务中被调用
-        for (PsiMethod targetMethod : targetMethods) {
-            // 更新进度信息
-            indicator.setText2(String.format("正在搜索方法: %s", targetMethod.getName()));
+            // 这里假设该方法已经在一个后台任务中被调用
+            for (PsiMethod targetMethod : targetMethods) {
+                // 更新进度信息
+                indicator.setText2(String.format("正在搜索方法: %s", targetMethod.getName()));
 
-            // 搜索项目中所有对该方法的调用
+                // 搜索项目中所有对该方法的调用
             Query<PsiReference> query = MethodReferencesSearch.search(targetMethod, GlobalSearchScope.allScope(project), true);
 
-            // 使用 forEach 结合 Processor 来处理每个搜索结果
-            query.forEach(new Processor<PsiReference>() {
-                @Override
-                public boolean process(PsiReference psiReference) {
-                    // 检查用户是否点击了取消
-                    if (indicator.isCanceled()) {
-                        return false; // 返回 false 停止遍历
-                    }
-
-                    PsiElement element = psiReference.getElement();
-                    PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
-                    if (callExpr != null) {
-                        PsiExpressionList argumentList = callExpr.getArgumentList();
-
-                        PsiExpression[] arguments = argumentList.getExpressions();
-                        PsiExpression firstArgument = arguments[0];
-                        String sqlId = JavaService.parseExpression(firstArgument);
-
-                        if (sqlId != null && !sqlId.isEmpty()) {
-                            syncToCacheManager(sqlId, callExpr);
+                // 使用 forEach 结合 Processor 来处理每个搜索结果
+                query.forEach(new Processor<PsiReference>() {
+                    @Override
+                    public boolean process(PsiReference psiReference) {
+                        // 检查用户是否点击了取消
+                        if (indicator.isCanceled()) {
+                            return false; // 返回 false 停止遍历
                         }
 
+                        PsiElement element = psiReference.getElement();
+                        PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
+                        if (callExpr != null) {
+                            PsiExpressionList argumentList = callExpr.getArgumentList();
+
+                            PsiExpression[] arguments = argumentList.getExpressions();
+                                PsiExpression firstArgument = arguments[0];
+                                String sqlId = JavaService.parseExpression(firstArgument);
+
+                                if (sqlId != null && !sqlId.isEmpty()) {
+                                    syncToCacheManager(sqlId, callExpr);
+                                }
+
+                        }
+                        return true; // 返回 true 继续遍历
                     }
-                    return true; // 返回 true 继续遍历
-                }
 
-            });
+                });
 
-            // 更新进度
-            progress[0] += step;
-            indicator.setFraction(progress[0]);
-        }
+                // 更新进度
+                progress[0] += step;
+                indicator.setFraction(progress[0]);
+            }
 
         indicator.setText("MyBatis方法调用搜索完成。");
     }
@@ -602,7 +602,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         ReadAction.run(() -> {
             PsiElement originalElement = element.getOriginalElement();
 
-            JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_CLASS);
+            JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_METHOD_CALL);
             cacheConfig.addJavaElementMapping(sqlId, javaElementInfo);
         });
     }
@@ -656,7 +656,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             String namespaceName = result.getNamespaceName();
             XmlTag rootTag = result.getNamespace();
 
-            XmlElementInfo xmlElementInfoRootTag = XmlTagLocator.createXmlElementInfo(rootTag, namespaceName, rootTag.getName());
+            XmlElementInfo xmlElementInfoRootTag = TagLocator.createXmlElementInfo(rootTag, namespaceName, "", rootTag.getName());
             if (xmlElementInfoRootTag != null) {
                 cacheConfig.addXmlElementMapping(namespaceName, xmlElementInfoRootTag);
             }
@@ -666,10 +666,12 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             for (String attributeName : keySet) {
                 List<XmlTag> list = statements.get(attributeName);
                 for (XmlTag tag : list) {
-                    String sqlKey = namespaceName + '.' + attributeName;
-                    XmlElementInfo xmlElementInfo = XmlTagLocator.createXmlElementInfo(tag, sqlKey, tag.getName());
+                    String sqlId = namespaceName + '.' + attributeName;
+                    String databaseId = tag.getAttributeValue("databaseId");
+                    databaseId = databaseId != null ? databaseId : "";
+                    XmlElementInfo xmlElementInfo = TagLocator.createXmlElementInfo(tag, sqlId, databaseId, tag.getName());
                     if (xmlElementInfo != null) {
-                        cacheConfig.addXmlElementMapping(sqlKey, xmlElementInfo);
+                        cacheConfig.addXmlElementMapping(sqlId, xmlElementInfo);
                     }
                 }
             }
@@ -687,7 +689,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
             Map<String, PsiClass> classes = result.getClasses();
             classes.forEach((key, psiClass) -> {
-                JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(psiClass, key, JavaService.TYPE_CLASS);
+                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiClass, key, JavaService.TYPE_CLASS);
                 if (javaElementInfo != null) {
                     cacheConfig.addJavaElementMapping(key, javaElementInfo);
                 }
@@ -695,7 +697,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
             Map<String, PsiClass> interfaces = result.getInterfaces();
             interfaces.forEach((key, psiClass) -> {
-                JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(psiClass, key, JavaService.TYPE_INTERFACE_CLASS);
+                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiClass, key, JavaService.TYPE_INTERFACE_CLASS);
                 if (javaElementInfo != null) {
                     cacheConfig.addJavaElementMapping(key, javaElementInfo);
                 }
@@ -703,7 +705,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 //            Map<String, List<PsiMethod>> allClassMethods = result.getAllClassMethods();
 //            allClassMethods.forEach((key, list) -> {
 //                list.forEach(classMethod -> {
-//                    JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
+//                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
 //                    if (javaElementInfo != null) {
 //                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
 //                    }
@@ -712,7 +714,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             Map<String, List<PsiMethod>> allInterfaceMethods = result.getAllInterfaceMethods();
             allInterfaceMethods.forEach((key, list) -> {
                 list.forEach(psiMethod -> {
-                    JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(psiMethod, key, JavaService.TYPE_INTERFACE_METHOD);
+                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiMethod, key, JavaService.TYPE_INTERFACE_METHOD);
                     if (javaElementInfo != null) {
                         cacheConfig.addJavaElementMapping(key, javaElementInfo);
                     }
@@ -721,7 +723,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             Map<String, List<PsiField>> methodCall = result.getStaticStringField();
             methodCall.forEach((key, list) -> {
                 list.forEach(psiField -> {
-                    JavaElementInfo javaElementInfo = XmlTagLocator.createJavaElementInfo(psiField, key, JavaService.TYPE_METHOD_CALL);
+                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiField, key, JavaService.TYPE_METHOD_CALL);
                     if (javaElementInfo != null) {
                         cacheConfig.addJavaElementMapping(key, javaElementInfo);
                     }

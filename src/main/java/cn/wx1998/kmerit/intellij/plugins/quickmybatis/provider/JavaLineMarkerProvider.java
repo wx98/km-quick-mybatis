@@ -3,7 +3,7 @@ package cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheConfig;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.XmlTagLocator;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TagLocator;
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo;
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider;
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder;
@@ -65,10 +65,10 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
                         }
                     }
                 }
-                if (sqlId != null) {
+                if (sqlId != null && !sqlId.isEmpty()) {
                     Set<XmlElementInfo> xmlElementInfos = cacheConfig.getXmlElementsBySqlId(sqlId);
                     for (XmlElementInfo xmlElementInfo : xmlElementInfos) {
-                        XmlTag xmlTagByInfo = XmlTagLocator.findXmlTagByInfo(xmlElementInfo, project);
+                        XmlTag xmlTagByInfo = TagLocator.findXmlTagByInfo(xmlElementInfo, project);
                         if (xmlTagByInfo == null) {
                             LOG.debug("xmlElementInfo 未找到： " + xmlElementInfo);
                             continue;
