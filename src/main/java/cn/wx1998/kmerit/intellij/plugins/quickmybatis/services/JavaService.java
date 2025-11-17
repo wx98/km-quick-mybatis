@@ -90,6 +90,8 @@ public class JavaService implements Serializable {
                         return value instanceof String ? (String) value : null;
                     } else if (firstArg instanceof PsiBinaryExpression) {
                         return parseExpression(firstArg);
+                    } else if (firstArg instanceof PsiReferenceExpression) {
+                        return parseExpression(firstArg);
                     }
 
                 } else {

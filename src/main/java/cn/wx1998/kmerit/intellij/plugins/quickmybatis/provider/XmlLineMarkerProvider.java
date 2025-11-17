@@ -1,27 +1,33 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider;
 
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheConfig;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlStructure;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.DomUtils;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.JavaUtils;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TagLocator;
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo;
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider;
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder;
+import com.intellij.codeInsight.navigation.impl.PsiTargetPresentationRenderer;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiMethod;
-import com.intellij.psi.PsiWhiteSpace;
+import com.intellij.psi.*;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlTag;
 import com.intellij.psi.xml.XmlToken;
+import io.ktor.client.engine.java.Java;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.*;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.Icons.IMAGES_STATEMENT_SVG;
 
@@ -44,6 +50,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
      */
     private static final String MAPPER_TAG = MyBatisXmlStructure.MAPPER_TAG;
 
+    MyBatisCacheConfig cacheConfig;
     /**
      * The constant TARGET_TYPES 包含此提供程序支持的 MyBatis 语句类型集合。
      * 这些包括 select、insert、update 和 delete 语句。
@@ -56,6 +63,8 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
         if (!isTheElement(element)) {
             return;
         }
+        cacheConfig = MyBatisCacheConfig.getInstance(element.getProject());
+
         // 应用处理逻辑并生成导航标记
         Optional<? extends PsiElement[]> processResult = apply((XmlToken) element);
         if (processResult.isPresent()) {
@@ -65,9 +74,60 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
                 navigationGutterIconBuilder.setTooltipTitle(getTooltip(arrays[0], element));
             }
             navigationGutterIconBuilder.setTargets(arrays);
+            navigationGutterIconBuilder.setTargetRenderer(getRender());
             RelatedItemLineMarkerInfo<PsiElement> lineMarkerInfo = navigationGutterIconBuilder.createLineMarkerInfo(element);
             result.add(lineMarkerInfo);
         }
+    }
+
+    private @NotNull Supplier<? extends PsiTargetPresentationRenderer<PsiElement>> getRender() {
+        return () -> new PsiTargetPresentationRenderer<>() {
+            /**
+             * 元素文本：展示简洁的元素标识（类名/方法名+参数简写）
+             */
+            @Nls
+            @NotNull
+            @Override
+            public String getElementText(@NotNull PsiElement element) {
+                // 处理Java类（接口）
+                if (element instanceof PsiClass psiClass) {
+                    return psiClass.getName() != null ? psiClass.getName() : "未知类";
+                }
+                // 处理Java方法（展示方法名+参数类型简写）
+                else if (element instanceof PsiMethod psiMethod) {
+                    String methodName = psiMethod.getName() != null ? psiMethod.getName() : "未知方法";
+                    // 参数类型简写（如：String→S，Integer→I，无参数→()）
+                    String paramShorthand = Arrays.stream(psiMethod.getParameterList().getParameters()).map(param -> param.getName()).collect(Collectors.joining(","));
+                    return methodName + "(" + paramShorthand + ")";
+                }
+                // 处理字段
+                else if (element instanceof PsiField psiField) {
+                    return psiField.getName() != null ? psiField.getName() : "未知字段";
+                }else if (element instanceof PsiIdentifier psiIdentifier) {
+                    PsiMethodCallExpression validMethodCallFromSqlSessionIdentifier = PsiTreeUtil.getParentOfType(psiIdentifier, PsiMethodCallExpression.class, true);
+                    return JavaService.parseExpression(validMethodCallFromSqlSessionIdentifier);
+                }
+                // 默认处理（避免强转异常）
+                else {
+                    return element.getText().length() > 20 ? element.getText().substring(0, 20) + "..." : element.getText();
+                }
+            }
+
+            /**
+             * 容器文本：只展示文件名（简洁无路径）
+             */
+            @Nls
+            @NotNull
+            @Override
+            public String getContainerText(@NotNull PsiElement element) {
+                PsiFile containingFile = element.getContainingFile();
+                if (containingFile == null || containingFile.getVirtualFile() == null) {
+                    return "未知文件";
+                }
+                // 只返回文件名（如：UserMapper.java），去除完整路径
+                return containingFile.getVirtualFile().getName();
+            }
+        };
     }
 
     /**
@@ -91,39 +151,42 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
 
     /**
      * 应用查找给定 MyBatis XML 元素对应的 Java 方法或类的逻辑。
-     * 使用直接XML解析而不是DOM来获取namespace和statement ID。
+     * 使用直接XML解析获取namespace和statement ID，通过缓存的JavaElementInfo+偏移量定位目标元素。
+     *
+     * @param from 表示 MyBatis XML 元素的源 XmlToken
+     * @return 如果找到，则包含 PsiElements（Java 方法或类）数组的 Optional；否则为空 Optional
+     */
+    /**
+     * 应用查找给定 MyBatis XML 元素对应的 Java 方法或类的逻辑。
+     * 使用直接XML解析获取namespace和statement ID，通过缓存的JavaElementInfo+偏移量定位目标元素。
      *
      * @param from 表示 MyBatis XML 元素的源 XmlToken
      * @return 如果找到，则包含 PsiElements（Java 方法或类）数组的 Optional；否则为空 Optional
      */
     public Optional<? extends PsiElement[]> apply(@NotNull XmlToken from) {
-        LOG.debug("Applying StatementLineMarkerProvider for element: " + from.getText());
+        LOG.debug("Applying XmlLineMarkerProvider for element: " + from.getText());
 
-        // 获取包含文件
+        // 1. 校验包含文件是否为XML文件
         PsiElement containingFile = from.getContainingFile();
-        if (!(containingFile instanceof XmlFile)) {
+        if (!(containingFile instanceof XmlFile xmlFile)) {
             LOG.debug("Containing file is not an XmlFile");
             return Optional.empty();
         }
 
-        // 从元素向上查找XmlTag
+        // 2. 向上查找当前元素对应的XmlTag（确保定位到statement/mapper标签）
         PsiElement parent = from.getParent();
         while (parent != null && !(parent instanceof XmlTag)) {
             parent = parent.getParent();
         }
-
         if (parent == null) {
-            LOG.debug("Could not find parent XmlTag");
+            LOG.debug("Could not find parent XmlTag for element: " + from.getText());
             return Optional.empty();
         }
-
         XmlTag currentTag = (XmlTag) parent;
-        String tagName = currentTag.getName();
+        String tagName = currentTag.getName().toLowerCase();
+        Project project = from.getProject();
 
-        // 获取项目
-        final Project project = from.getProject();
-
-        // 处理mapper根标签 - 查找对应的Java类
+        // 3. 处理mapper根标签：查找对应的Java接口/类（基于namespace关联的JavaElementInfo）
         if (MAPPER_TAG.equalsIgnoreCase(tagName)) {
             String namespace = currentTag.getAttributeValue("namespace");
             if (StringUtil.isEmpty(namespace)) {
@@ -131,57 +194,73 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
                 return Optional.empty();
             }
 
-            LOG.debug("Finding Java classes for namespace: " + namespace);
-            Optional<PsiClass[]> classes = JavaUtils.findClasses(project, namespace);
-            int mapperIndex = namespace.lastIndexOf("Mapper");
-            if (mapperIndex == -1) { // 避免 substring 越界，若没有 "Mapper" 后缀则直接返回 classes
-                return classes;
+            // 从缓存获取namespace对应的Java元素信息
+            Set<JavaElementInfo> javaElementInfos = cacheConfig.getSqlIdToJavaElements().get(namespace);
+            if (javaElementInfos == null || javaElementInfos.isEmpty()) {
+                LOG.debug("No JavaElementInfo found for namespace: " + namespace);
+                return Optional.empty();
             }
-            String substring = namespace.substring(0, mapperIndex);
-            Optional<PsiClass[]> classes1 = JavaUtils.findClasses(project, substring);
-            // 合并两个 Optional 中的 PsiClass 数组
-            return Optional.ofNullable(mergePsiClasses(classes, classes1));
+
+            // 遍历JavaElementInfo，通过TagLocator定位具体的PsiClass
+            List<PsiElement> targetClasses = new ArrayList<>();
+            for (JavaElementInfo info : javaElementInfos) {
+                PsiElement javaElement = TagLocator.findJavaTagByInfo(info, project);
+                targetClasses.add(javaElement);
+            }
+
+            if (targetClasses.isEmpty()) {
+                LOG.debug("No Java class found for namespace: " + namespace);
+                return Optional.empty();
+            }
+            // 转换为PsiClass数组返回（保持原有返回类型兼容）
+            return Optional.of(targetClasses.toArray(new PsiElement[0]));
         }
 
-        // 处理statement标签 - 查找对应的Java方法
+        // 4. 处理statement标签（select/insert/update/delete）：查找对应的Java方法
         else if (isStatementTag(tagName)) {
-            // 获取statement的id属性
             String id = currentTag.getAttributeValue("id");
             if (StringUtil.isEmpty(id)) {
                 LOG.debug("Statement tag missing id attribute");
                 return Optional.empty();
             }
 
-            // 查找根mapper标签获取namespace
-            XmlTag rootTag = ((XmlFile) containingFile).getDocument().getRootTag();
+            // 获取根mapper标签的namespace，拼接完整SQL ID
+            XmlTag rootTag = xmlFile.getDocument() != null ? xmlFile.getDocument().getRootTag() : null;
             if (rootTag == null) {
-                LOG.debug("Could not find root tag in XML file");
+                LOG.debug("Could not find root mapper tag in XML file");
                 return Optional.empty();
             }
-
             String namespace = rootTag.getAttributeValue("namespace");
             if (StringUtil.isEmpty(namespace)) {
-                LOG.debug("Root tag missing namespace attribute");
+                LOG.debug("Root mapper tag missing namespace attribute");
+                return Optional.empty();
+            }
+            String fullSqlId = namespace + "." + id;
+
+            // 从缓存获取SQL ID对应的Java元素信息
+            Set<JavaElementInfo> javaElementInfos = cacheConfig.getJavaElementsBySqlId(fullSqlId);
+            if (javaElementInfos == null || javaElementInfos.isEmpty()) {
+                LOG.debug("No JavaElementInfo found for sqlId: " + fullSqlId);
                 return Optional.empty();
             }
 
-            LOG.debug("Finding Java methods for namespace: " + namespace + ", id: " + id);
-            Optional<PsiMethod[]> methods = JavaUtils.findMethods(project, namespace, id);
-
-            // 如果直接查找失败，尝试去掉namespace末尾的Mapper后缀再查找
-            if (methods.isEmpty() || methods.get().length == 0) {
-                int mapperIndex = namespace.lastIndexOf("Mapper");
-                if (mapperIndex != -1 && mapperIndex == namespace.length() - 6) {
-                    String shortNamespace = namespace.substring(0, mapperIndex);
-                    LOG.debug("Trying to find methods with short namespace: " + shortNamespace);
-                    return JavaUtils.findMethods(project, shortNamespace, id);
-                }
+            // 遍历JavaElementInfo，通过TagLocator定位具体的PsiMethod
+            List<PsiElement> targetMethods = new ArrayList<>();
+            for (JavaElementInfo info : javaElementInfos) {
+                PsiElement javaElement = TagLocator.findJavaTagByInfo(info, project);
+                targetMethods.add(javaElement);
             }
 
-            return methods;
+            if (targetMethods.isEmpty()) {
+                LOG.debug("No Java method found for sqlId: " + fullSqlId);
+                return Optional.empty();
+            }
+            // 转换为PsiMethod数组返回（保持原有返回类型兼容）
+            return Optional.of(targetMethods.toArray(new PsiElement[0]));
         }
 
-        LOG.debug("Element is not a target tag type: " + tagName);
+        // 5. 非目标标签类型，返回空
+        LOG.debug("Element is not a target tag type (mapper/select/insert/update/delete): " + tagName);
         return Optional.empty();
     }
 
@@ -246,8 +325,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
      *
      * @return 提供程序的名称，如果禁用则为 null
      */
-    public @Nullable("null means disabled")
-    String getName() {
+    public @Nullable("null means disabled") String getName() {
         return "Statement line marker";
     }
 

@@ -1,6 +1,5 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheConfig;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -22,7 +21,6 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
 
     private static final Logger LOG = Logger.getInstance(MyBatisXmlParserDefault.class);
     private final Project project;
-    private final MyBatisCacheConfig cacheConfig; // 全局缓存管理器
 
     /**
      * 构造函数
@@ -31,7 +29,6 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
      */
     public MyBatisXmlParserDefault(Project project) {
         this.project = project;
-        this.cacheConfig = MyBatisCacheConfig.getInstance(project); // 初始化全局缓存
         LOG.debug("为项目初始化默认MyBatis XML解析器: " + project.getName());
     }
 

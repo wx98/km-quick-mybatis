@@ -11,9 +11,13 @@ public class JavaElementInfo implements Comparable<JavaElementInfo> {
      */
     private String filePath;
     /**
-     * 元素所在行号（用于跳转）
+     * 标签开始偏移量
      */
-    private int lineNumber;
+    private int startOffset;
+    /**
+     * 标签结束偏移量
+     */
+    private int endOffset;
     /**
      * 元素类型（class/method/field/methodCall）
      */
@@ -22,28 +26,16 @@ public class JavaElementInfo implements Comparable<JavaElementInfo> {
      * 元素对应的SQL ID
      */
     private String sqlId;
-    /**
-     * 用于精确定位标签的XPath表达式
-     */
-    private String xpath;
 
     private JavaElementInfo() {
     }
 
-    public JavaElementInfo(@NotNull String filePath, int lineNumber, @NotNull String elementType, @NotNull String sqlId, @NotNull String xpath) {
+    public JavaElementInfo(@NotNull String filePath, int startOffset, int endOffset, @NotNull String elementType, @NotNull String sqlId) {
         this.filePath = filePath;
-        this.lineNumber = lineNumber;
+        this.startOffset = startOffset;
+        this.endOffset = endOffset;
         this.elementType = elementType;
         this.sqlId = sqlId;
-        this.xpath = xpath;
-    }
-
-    public String getXpath() {
-        return xpath;
-    }
-
-    public void setXpath(@NotNull String xpath) {
-        this.xpath = xpath;
     }
 
     public String getFilePath() {
@@ -54,12 +46,20 @@ public class JavaElementInfo implements Comparable<JavaElementInfo> {
         this.filePath = filePath;
     }
 
-    public int getLineNumber() {
-        return lineNumber;
+    public int getStartOffset() {
+        return startOffset;
     }
 
-    public void setLineNumber(int lineNumber) {
-        this.lineNumber = lineNumber;
+    public void setStartOffset(int startOffset) {
+        this.startOffset = startOffset;
+    }
+
+    public int getEndOffset() {
+        return endOffset;
+    }
+
+    public void setEndOffset(int endOffset) {
+        this.endOffset = endOffset;
     }
 
     public String getElementType() {
@@ -84,20 +84,22 @@ public class JavaElementInfo implements Comparable<JavaElementInfo> {
         if (o == null || getClass() != o.getClass()) return false;
         JavaElementInfo that = (JavaElementInfo) o;
         // 行号需要一致
-        boolean flag1 = lineNumber == that.lineNumber;
+        boolean flag1 = startOffset == that.startOffset;
+        // 行号需要一致
+        boolean flag2 = endOffset == that.endOffset;
         // Java文件路径 需要一致
-        boolean flag2 = filePath.equals(that.filePath);
+        boolean flag3 = filePath.equals(that.filePath);
         // 元素类型 需要一致
-        boolean flag3 = elementType.equals(that.elementType);
+        boolean flag4 = elementType.equals(that.elementType);
         // SQL ID 需要一致
-        boolean flag4 = sqlId.equals(that.sqlId);
-        boolean flag5 = java.util.Objects.equals(xpath, that.xpath);
+        boolean flag5 = sqlId.equals(that.sqlId);
         return flag1 && flag2 && flag3 && flag4 && flag5;
     }
 
     @Override
     public int hashCode() {
-        return java.util.Objects.hash(filePath, lineNumber, elementType, sqlId, xpath);
+        return java.util.Objects.hash(filePath, startOffset, endOffset, elementType, sqlId);
+
     }
 
     @Override
@@ -106,18 +108,16 @@ public class JavaElementInfo implements Comparable<JavaElementInfo> {
         if (filePathCompare != 0) {
             return filePathCompare;
         }
-        if (this.xpath != null && o.xpath != null) {
-            int xpathCompare = this.xpath.compareTo(o.xpath);
-            if (xpathCompare != 0) {
-                return xpathCompare;
-            }
+        if (this.startOffset != o.startOffset) {
+            return Integer.compare(this.startOffset, o.startOffset);
+        } else {
+            return Integer.compare(this.endOffset, o.endOffset);
         }
-        return Integer.compare(this.lineNumber, o.lineNumber);
     }
 
 
     @Override
     public String toString() {
-        return "JavaElementInfo{filePath='" + filePath + "', lineNumber=" + lineNumber + ", tagName='" + elementType + "', sqlId='" + sqlId + "', xpath='" + xpath + "'}";
+        return "JavaElementInfo{filePath='" + filePath + "', startOffset=" + startOffset + "', endOffset=" + endOffset + ", tagName='" + elementType + "', sqlId='" + sqlId + "'}";
     }
 }
