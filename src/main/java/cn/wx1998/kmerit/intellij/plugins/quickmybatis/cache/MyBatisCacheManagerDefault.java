@@ -11,11 +11,13 @@ import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TagLocator;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TargetMethodsHolder;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
@@ -537,10 +539,20 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      * @param progress   进度数组，用于与外部进度同步
      */
     public void processAllJavaMyBatisMethodCall(@NotNull ProgressIndicator indicator, double proportion, double[] progress) {
+        // 等待索引就绪（Dumb Mode 是索引构建/更新的状态）
+        DumbService.getInstance(project).runWhenSmart(() -> {
+            // 索引就绪后，在后台线程执行搜索（避免阻塞UI）
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                doActualSearch(indicator, proportion, progress);
+            });
+        });
+    }
+
+    private void doActualSearch(ProgressIndicator indicator, double proportion, double[] progress) {
         indicator.setText("正在搜索MyBatis方法调用...");
         indicator.setText2("准备搜索...");
 
-        TargetMethodsHolder targetHolder = TargetMethodsHolder.getInstance(project);
+        TargetMethodsHolder targetHolder = new TargetMethodsHolder(project);
         Set<PsiMethod> targetMethods = targetHolder.getTargetMethods();
 
         if (targetMethods.isEmpty()) {

@@ -13,22 +13,14 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class TargetMethodsHolder {
-    private static TargetMethodsHolder instance;
     private final Project project;
     private final Set<PsiMethod> targetMethods;
 
-    private TargetMethodsHolder(Project project) {
+    public TargetMethodsHolder(Project project) {
         this.project = project;
         // 修正 #1: 使用标准 JDK 创建线程安全的 Set
         this.targetMethods = Collections.newSetFromMap(new ConcurrentHashMap<>());
         reloadTargetMethods();
-    }
-
-    public static synchronized TargetMethodsHolder getInstance(Project project) {
-        if (instance == null) {
-            instance = new TargetMethodsHolder(project);
-        }
-        return instance;
     }
 
     /**
