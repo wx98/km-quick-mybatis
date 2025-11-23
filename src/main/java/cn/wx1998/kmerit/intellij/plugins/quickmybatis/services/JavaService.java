@@ -242,9 +242,37 @@ public class JavaService implements Serializable {
     }
 
     /**
-     * 校验 Psi 元素是否有效（非空、存在于文件中）
+     * 替换方法调用文本中的第一个参数为计算后的值
+     * 示例：sqlSession.selectOne(NAMESPACE + ".queryById", params) → sqlSession.selectOne("com.xxx.UserMapper.queryById", params)
+     *
+     * @param originalText  原始方法调用文本
+     * @param methodName    方法名（如 selectOne）
+     * @param newFirstParam 计算后的第一个参数值
+     * @return 替换后的文本
      */
-    private boolean isValidPsiElement(@NotNull PsiElement element) {
-        return element.isValid() && element.getContainingFile() != null && element.getContainingFile().getVirtualFile() != null;
+    public static String replaceFirstParam(String originalText, String methodName, String newFirstParam) {
+        if (methodName == null || newFirstParam == null) {
+            return originalText;
+        }
+
+        // 找到第一个 '(' 的位置（方法名后紧跟的括号）
+        int openBraceIndex = originalText.indexOf('(', originalText.indexOf(methodName));
+        if (openBraceIndex == -1) {
+            return originalText;
+        }
+
+        // 找到第一个 ',' 或 ')' 的位置（第一个参数的结束位置）
+        int firstParamEndIndex = originalText.indexOf(',', openBraceIndex);
+        if (firstParamEndIndex == -1) {
+            firstParamEndIndex = originalText.indexOf(')', openBraceIndex);
+        }
+        if (firstParamEndIndex == -1) {
+            return originalText;
+        }
+
+        // 替换第一个参数（用双引号包裹计算后的值，保持语法一致）
+        String prefix = originalText.substring(0, openBraceIndex + 1).trim();
+        String suffix = originalText.substring(firstParamEndIndex).trim();
+        return String.format("%s\"%s\"%s", prefix, newFirstParam, suffix);
     }
 }

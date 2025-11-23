@@ -12,9 +12,6 @@
     <depends>com.intellij.modules.xml</depends>
     <!-- 资源包 -->
     <resource-bundle>messages.MyBundle</resource-bundle>
-    <!-- 扩展点 -->
-    <extensions defaultExtensionNs="com.intellij">
-    </extensions>
     <!-- 监听器 -->
     <applicationListeners>
         <listener
@@ -22,17 +19,18 @@
                 class="cn.wx1998.kmerit.intellij.plugins.quickmybatis.listeners.MyApplicationActivationListener"
         />
     </applicationListeners>
-
+    <!-- Action -->
     <actions>
         <!-- 注册刷新动作 -->
         <action id="QuickMyBatis.RefreshCache"
                 class="cn.wx1998.kmerit.intellij.plugins.quickmybatis.actions.RefreshMyBatisCacheAction"
-                text="刷新MyBatis缓存" description="刷新所有MyBatis相关缓存">
+                text="刷新MyBatis缓存"
+                description="刷新所有MyBatis相关缓存">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
         </action>
     </actions>
-
+    <!-- 扩展点 -->
     <extensions defaultExtensionNs="com.intellij">
         <projectService
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService"
@@ -42,10 +40,12 @@
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService"
         />
-    </extensions>
+        <projectService
+                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil$NotificationSettings"
+                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil$NotificationSettings"
+        />
 
-    <extensions defaultExtensionNs="com.intellij">
-        <!-- java 跳转到 xml  实现代码导航功能 -->
+        <!-- java 跳转到 xml   -->
         <codeInsight.lineMarkerProvider
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.JavaLineMarkerProvider"
                 language="JAVA"
@@ -74,12 +74,12 @@
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
         />
-        <!-- 缓存管理器服务 -->
+        <!-- 缓存持久化组件 -->
         <projectService
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistentState"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistentState"
         />
-        <!-- 缓存管理器服务 -->
+        <!-- 插件配置类 -->
         <projectService
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting"
@@ -91,5 +91,13 @@
         <!-- 项目关闭时触发 -->
         <projectCloseHandler
                 implementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCacheCloseSaver"/>
+
+        <!-- 插件通知组-->
+        <notificationGroup
+                displayType="BALLOON"
+                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil"
+                isLogByDefault="true"
+                bundle="messages.MyBundle"
+                key="notification.group.cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil"/>
     </extensions>
 </idea-plugin>

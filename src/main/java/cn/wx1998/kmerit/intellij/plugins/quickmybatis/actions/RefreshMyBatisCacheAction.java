@@ -20,6 +20,7 @@ public class RefreshMyBatisCacheAction extends AnAction {
         MyBatisCacheManagerDefault cacheManager = MyBatisCacheManagerDefault.getInstance(project);
 
         cacheManager.performFullCacheRefresh();
+
     }
 
     @Override
