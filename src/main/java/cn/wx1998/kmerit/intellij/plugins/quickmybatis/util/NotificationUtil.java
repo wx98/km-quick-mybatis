@@ -107,7 +107,7 @@ public class NotificationUtil {
                 (currentProject, notification) -> {
                     if (currentProject != null) {
                         MyBatisCacheManagerDefault cacheManager = MyBatisCacheManagerDefault.getInstance(currentProject);
-                        cacheManager.performFullCacheRefresh();
+                        cacheManager.performFullCacheRefresh(0);
                     }
                 }, doNotShowBtnText,
                 // 右侧按钮：空逻辑

@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
+import com.intellij.psi.util.PsiTreeUtil;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,7 +37,6 @@ public class JavaParserDefault implements JavaParser {
 
     @Override
     public JavaParseResult parse(PsiJavaFile file) {
-
         String path = file.getVirtualFile().getPath();
         LOG.debug("开始解析Java文件: " + path);
 
@@ -47,8 +47,24 @@ public class JavaParserDefault implements JavaParser {
             return null;
         }
 
-        // 创建解析结果
-        return ReadAction.compute(() -> new DefaultJavaParseResult(file));
+        // 创建解析结果,为了节省时间 解析结果不包含 方法调用
+        return ReadAction.compute(() -> new DefaultJavaParseResult(file, false));
+    }
+
+    @Override
+    public JavaParseResult parseEverything(PsiJavaFile file) {
+        String path = file.getVirtualFile().getPath();
+        LOG.debug("开始解析Java文件: " + path);
+
+        // 验证文件有效性
+        boolean isValid = isValidJavaFile(file);
+        if (!isValid) {
+            LOG.warn("无效的Java文件: " + file.getName());
+            return null;
+        }
+
+        // 创建解析结果,结果包含 方法调用
+        return ReadAction.compute(() -> new DefaultJavaParseResult(file, true));
     }
 
     @Override
@@ -124,10 +140,11 @@ public class JavaParserDefault implements JavaParser {
      */
     private boolean hasTestAnnotation(PsiModifierListOwner element) {
         // 常见测试注解列表（可根据实际需求扩展）
-        Set<String> testAnnotations = new HashSet<>(Arrays.asList("org.junit.Test",                // JUnit4测试方法
-                "org.junit.jupiter.api.Test",    // JUnit5测试方法
-                "org.springframework.boot.test.context.SpringBootTest", // SpringBoot测试类
-                "org.testng.annotations.Test"    // TestNG测试方法
+        Set<String> testAnnotations = new HashSet<>(Arrays.asList("org.junit.Test",// JUnit4测试方法
+                "org.junit.jupiter.api.Test",                                      // JUnit5测试方法
+                "org.springframework.boot.test.context.SpringBootTest",            // SpringBoot测试类
+                "org.testng.annotations.Test"                                      // TestNG测试方法
+
         ));
 
         for (PsiAnnotation annotation : element.getAnnotations()) {
@@ -184,9 +201,14 @@ public class JavaParserDefault implements JavaParser {
          * 静态字符串类成员
          */
         private final Map<String, List<PsiField>> staticStringField = new ConcurrentHashMap<>();
+        /**
+         * 解析是否包含方法调用的标记
+         */
+        private final boolean includeMethodCalls;
 
-        public DefaultJavaParseResult(PsiJavaFile file) {
+        public DefaultJavaParseResult(PsiJavaFile file, boolean includeMethodCalls) {
             this.file = file;
+            this.includeMethodCalls = includeMethodCalls;
             initializeMaps();
         }
 
@@ -210,25 +232,28 @@ public class JavaParserDefault implements JavaParser {
                         String methodKey = className + "." + method.getName();
                         // 按方法名分组（处理重载）
                         classMethodsByName.computeIfAbsent(methodKey, k -> new ArrayList<>()).add(method);
-//                        PsiCodeBlock body = method.getBody();
-//                        if (body == null) continue;
-//                        Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
-//                        for (PsiMethodCallExpression callExpr : childrenOfType) {
-//                            JavaService javaService = JavaService.getInstance(body.getProject());
-//                            if (!javaService.isSqlSessionMethod(method)) {
-//                                continue;
-//                            }
-//                            PsiExpressionList argumentList = callExpr.getArgumentList();
-//                            PsiExpression[] expressions = argumentList.getExpressions();
-//                            if (expressions == null || expressions.length < 1) {
-//                                continue;
-//                            }
-//                            PsiExpression expression = expressions[0];
-//                            String key = JavaService.parseExpression(expression);
-//                            if (key != null && !key.isEmpty()) {
-//                                classMethodCall.computeIfAbsent(key, k -> new ArrayList<>()).add(callExpr);
-//                            }
-//                        }
+                        // 包含方法调用的解析
+                        if (includeMethodCalls) {
+                            PsiCodeBlock body = method.getBody();
+                            if (body == null) continue;
+                            Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
+                            for (PsiMethodCallExpression callExpr : childrenOfType) {
+                                JavaService javaService = JavaService.getInstance(body.getProject());
+                                if (!javaService.isSqlSessionMethod(method)) {
+                                    continue;
+                                }
+                                PsiExpressionList argumentList = callExpr.getArgumentList();
+                                PsiExpression[] expressions = argumentList.getExpressions();
+                                if (expressions == null || expressions.length < 1) {
+                                    continue;
+                                }
+                                PsiExpression expression = expressions[0];
+                                String key = JavaService.parseExpression(expression);
+                                if (key != null && !key.isEmpty()) {
+                                    classMethodCall.computeIfAbsent(key, k -> new ArrayList<>()).add(callExpr);
+                                }
+                            }
+                        }
                     }
                 }
                 PsiField[] fields = cls.getFields();

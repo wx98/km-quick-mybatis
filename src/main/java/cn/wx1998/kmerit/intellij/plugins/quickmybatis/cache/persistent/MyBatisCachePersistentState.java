@@ -34,6 +34,7 @@ public class MyBatisCachePersistentState implements PersistentStateComponent<MyB
     public Map<String, Set<String>> javaFileToSqlIds = new HashMap<>();
     public Map<String, Set<String>> xmlFileToSqlIds = new HashMap<>();
     public Map<String, String> fileDigestCache = new HashMap<>();
+    public Map<String, Set<String>> sqlIdToFiles = new HashMap<>();
 
     public MyBatisCachePersistentState() {
     }
@@ -67,6 +68,7 @@ public class MyBatisCachePersistentState implements PersistentStateComponent<MyB
         this.javaFileToSqlIds = new HashMap<>(config.getJavaFileToSqlIds());
         this.xmlFileToSqlIds = new HashMap<>(config.getXmlFileToSqlIds());
         this.fileDigestCache = new HashMap<>(config.getFileDigestCache());
+        this.sqlIdToFiles = new HashMap<>(config.getSqlIdToFiles());
     }
 
     /**
@@ -86,6 +88,7 @@ public class MyBatisCachePersistentState implements PersistentStateComponent<MyB
         config.getJavaFileToSqlIds().putAll(this.javaFileToSqlIds);
         config.getXmlFileToSqlIds().putAll(this.xmlFileToSqlIds);
         config.getFileDigestCache().putAll(this.fileDigestCache);
+        config.getSqlIdToFiles().putAll(this.sqlIdToFiles);
     }
 
     /**
@@ -103,14 +106,8 @@ public class MyBatisCachePersistentState implements PersistentStateComponent<MyB
 
     private void showCacheMissingNotification() {
         String notificationKey = this.getClass().getSimpleName();
-        NotificationUtil.showCacheRefreshNotification(
-                project,
-                notificationKey, // 新增：通知唯一标识
-                "MyBatis缓存提示",
-                "检测到缓存文件缺失或无效，建议刷新缓存以确保功能正常",
-                "刷新缓存",
-                "不再建议"
-        );
+        NotificationUtil.showCacheRefreshNotification(project, notificationKey, // 新增：通知唯一标识
+                "MyBatis缓存提示", "检测到缓存文件缺失或无效，建议刷新缓存以确保功能正常", "刷新缓存", "不再建议");
     }
 
 }
