@@ -2,11 +2,14 @@ package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache;
 
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -16,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * MyBatis缓存配置核心类，管理SQL ID与Java/XML元素的映射关系
  */
 public class MyBatisCacheConfig {
+    private static final Logger LOG = Logger.getInstance(MyBatisCacheManagerDefault.class);
+
     /**
      * 单例模式（按项目隔离缓存）
      */
@@ -37,7 +42,11 @@ public class MyBatisCacheConfig {
      */
     private final Map<String, Set<String>> xmlFileToSqlIds = new ConcurrentHashMap<>();
     /**
-     * 5. 文件摘要缓存（用于后续定时校验文件是否变更）
+     * 5. sqlId -> 该sqlId所有涉及的文件 （一对多）
+     */
+    private final Map<String, Set<String>> sqlIdToFiles = new ConcurrentHashMap<>();
+    /**
+     * 6. 文件摘要缓存（用于后续定时校验文件是否变更）
      */
     private final Map<String, String> fileDigestCache = new ConcurrentHashMap<>();
 
@@ -61,6 +70,11 @@ public class MyBatisCacheConfig {
         sqlIdToJavaElements.computeIfAbsent(sqlId, k -> ConcurrentHashMap.newKeySet()).add(javaInfo);
         // 2. 更新Java文件到SQL ID的映射
         javaFileToSqlIds.computeIfAbsent(javaInfo.getFilePath(), k -> ConcurrentHashMap.newKeySet()).add(sqlId);
+        // 3. 更新 SQL ID 涉及的所有文件
+        sqlIdToFiles.computeIfAbsent(sqlId, k -> ConcurrentHashMap.newKeySet()).add(javaInfo.getFilePath());
+        // 4. 更新文件概
+        fileDigestCache.computeIfAbsent(javaInfo.getFilePath(), MyBatisCacheConfig::calculateFileDigest);
+
     }
 
     /**
@@ -81,6 +95,10 @@ public class MyBatisCacheConfig {
         sqlIdToXmlElements.computeIfAbsent(sqlId, k -> ConcurrentHashMap.newKeySet()).add(xmlInfo);
         // 2. 更新XML文件到SQL ID的映射
         xmlFileToSqlIds.computeIfAbsent(xmlInfo.getFilePath(), k -> ConcurrentHashMap.newKeySet()).add(sqlId);
+        // 3. 更新 SQL ID 涉及的所有文件
+        sqlIdToFiles.computeIfAbsent(sqlId, k -> ConcurrentHashMap.newKeySet()).add(xmlInfo.getFilePath());
+        // 4. 更新文件概
+        fileDigestCache.computeIfAbsent(xmlInfo.getFilePath(), MyBatisCacheConfig::calculateFileDigest);
     }
 
     /**
@@ -138,6 +156,16 @@ public class MyBatisCacheConfig {
     // ========================= 缓存清理操作（基础方法，为后续阶段准备） =========================
 
     /**
+     *
+     */
+    @NotNull
+    public Set<String> getSqlIdToFiles(@NotNull String sqlId) {
+        return sqlIdToFiles.getOrDefault(sqlId, Collections.emptySet());
+    }
+
+    // ========================= 缓存清理操作（基础方法，为后续阶段准备） =========================
+
+    /**
      * 清除指定Java文件的所有缓存映射
      */
     public void clearJavaFileCache(@NotNull String javaFilePath) {
@@ -189,9 +217,28 @@ public class MyBatisCacheConfig {
         sqlIdToXmlElements.clear();
         javaFileToSqlIds.clear();
         xmlFileToSqlIds.clear();
+        sqlIdToFiles.clear();
         fileDigestCache.clear();
     }
 
+    public static String calculateFileDigest(String filePath) {
+        VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
+        if (file != null && file.exists()) {
+            return calculateFileDigest(file);
+        } else {
+            return null;
+        }
+    }
+
+    private static String calculateFileDigest(@NotNull VirtualFile file) {
+        try {
+            byte[] content = file.contentsToByteArray();
+            return Integer.toHexString(Arrays.hashCode(content));
+        } catch (Exception e) {
+            LOG.error("计算文件摘要失败: " + file.getPath(), e);
+            return "";
+        }
+    }
 
     public Map<String, Set<JavaElementInfo>> getSqlIdToJavaElements() {
         return sqlIdToJavaElements;
@@ -211,5 +258,9 @@ public class MyBatisCacheConfig {
 
     public Map<String, String> getFileDigestCache() {
         return fileDigestCache;
+    }
+
+    public Map<String, Set<String>> getSqlIdToFiles() {
+        return sqlIdToFiles;
     }
 }

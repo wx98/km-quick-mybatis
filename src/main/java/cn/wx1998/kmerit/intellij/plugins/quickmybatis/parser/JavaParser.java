@@ -19,6 +19,14 @@ public interface JavaParser {
     JavaParseResult parse(PsiJavaFile file);
 
     /**
+     * 解析Java文件 包含方法调用
+     *
+     * @param file 要解析的Java文件
+     * @return 解析结果，包含了Java文件中的所有相关元素
+     */
+    JavaParseResult parseEverything(PsiJavaFile file);
+
+    /**
      * 判断是否为有效的Java文件
      *
      * @param file 要检查的Java文件

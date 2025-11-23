@@ -100,21 +100,6 @@ public interface MyBatisCacheManager {
     void clearAllCache();
 
     /**
-     * 标记文件缓存失效
-     *
-     * @param file 要标记失效的文件
-     */
-    void invalidateFileCache(@NotNull PsiFile file);
-
-
-    /**
-     * 标记文件缓存失效
-     *
-     * @param filePath 文件路径
-     */
-    void invalidateFileCache(@NotNull String filePath);
-
-    /**
      * 检查文件缓存是否有效
      *
      * @param filePath 文件路径
@@ -125,7 +110,7 @@ public interface MyBatisCacheManager {
     /**
      * 刷新所有失效的缓存
      */
-    void refreshInvalidatedCaches();
+    void refreshInvalidatedCaches(String filePath);
 
     /**
      * 获取当前缓存配置
