@@ -553,46 +553,45 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 计算每个方法的进度步长
         double step = proportion / targetMethods.size();
 
-            // 这里假设该方法已经在一个后台任务中被调用
-            for (PsiMethod targetMethod : targetMethods) {
-                // 更新进度信息
-                indicator.setText2(String.format("正在搜索方法: %s", targetMethod.getName()));
+        // 这里假设该方法已经在一个后台任务中被调用
+        for (PsiMethod targetMethod : targetMethods) {
+            // 更新进度信息
+            indicator.setText2(String.format("正在搜索方法: %s", targetMethod.getName()));
 
-                // 搜索项目中所有对该方法的调用
+            // 搜索项目中所有对该方法的调用
             Query<PsiReference> query = MethodReferencesSearch.search(targetMethod, GlobalSearchScope.allScope(project), true);
 
-                // 使用 forEach 结合 Processor 来处理每个搜索结果
-                query.forEach(new Processor<PsiReference>() {
-                    @Override
-                    public boolean process(PsiReference psiReference) {
-                        // 检查用户是否点击了取消
-                        if (indicator.isCanceled()) {
-                            return false; // 返回 false 停止遍历
-                        }
-
-                        PsiElement element = psiReference.getElement();
-                        PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
-                        if (callExpr != null) {
-                            PsiExpressionList argumentList = callExpr.getArgumentList();
-
-                            PsiExpression[] arguments = argumentList.getExpressions();
-                                PsiExpression firstArgument = arguments[0];
-                                String sqlId = JavaService.parseExpression(firstArgument);
-
-                                if (sqlId != null && !sqlId.isEmpty()) {
-                                    syncToCacheManager(sqlId, callExpr);
-                                }
-
-                        }
-                        return true; // 返回 true 继续遍历
+            // 使用 forEach 结合 Processor 来处理每个搜索结果
+            query.forEach(new Processor<PsiReference>() {
+                @Override
+                public boolean process(PsiReference psiReference) {
+                    // 检查用户是否点击了取消
+                    if (indicator.isCanceled()) {
+                        return false; // 返回 false 停止遍历
                     }
 
-                });
+                    PsiElement element = psiReference.getElement();
+                    PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
+                    if (callExpr != null) {
+                        PsiExpressionList argumentList = callExpr.getArgumentList();
 
-                // 更新进度
-                progress[0] += step;
-                indicator.setFraction(progress[0]);
-            }
+                        PsiExpression[] arguments = argumentList.getExpressions();
+                        PsiExpression firstArgument = arguments[0];
+                        String sqlId = JavaService.parseExpression(firstArgument);
+
+                        if (sqlId != null && !sqlId.isEmpty()) {
+                            syncToCacheManager(sqlId, callExpr);
+                        }
+                    }
+                    return true; // 返回 true 继续遍历
+                }
+
+            });
+
+            // 更新进度
+            progress[0] += step;
+            indicator.setFraction(progress[0]);
+        }
 
         indicator.setText("MyBatis方法调用搜索完成。");
     }

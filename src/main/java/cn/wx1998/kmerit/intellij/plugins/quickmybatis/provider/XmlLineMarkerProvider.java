@@ -11,6 +11,7 @@ import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider;
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder;
 import com.intellij.codeInsight.navigation.impl.PsiTargetPresentationRenderer;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.text.StringUtil;
@@ -19,7 +20,6 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlTag;
 import com.intellij.psi.xml.XmlToken;
-import io.ktor.client.engine.java.Java;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -82,33 +82,47 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
 
     private @NotNull Supplier<? extends PsiTargetPresentationRenderer<PsiElement>> getRender() {
         return () -> new PsiTargetPresentationRenderer<>() {
-            /**
-             * 元素文本：展示简洁的元素标识（类名/方法名+参数简写）
-             */
             @Nls
             @NotNull
             @Override
             public String getElementText(@NotNull PsiElement element) {
-                // 处理Java类（接口）
                 if (element instanceof PsiClass psiClass) {
+                    // 处理Java类（接口）
                     return psiClass.getName() != null ? psiClass.getName() : "未知类";
-                }
-                // 处理Java方法（展示方法名+参数类型简写）
-                else if (element instanceof PsiMethod psiMethod) {
+                } else if (element instanceof PsiMethod psiMethod) {
+                    // 处理Java方法（展示方法名+参数类型简写）
                     String methodName = psiMethod.getName() != null ? psiMethod.getName() : "未知方法";
                     // 参数类型简写（如：String→S，Integer→I，无参数→()）
                     String paramShorthand = Arrays.stream(psiMethod.getParameterList().getParameters()).map(param -> param.getName()).collect(Collectors.joining(","));
                     return methodName + "(" + paramShorthand + ")";
-                }
-                // 处理字段
-                else if (element instanceof PsiField psiField) {
+                } else if (element instanceof PsiField psiField) {
+                    // 处理字段
                     return psiField.getName() != null ? psiField.getName() : "未知字段";
-                }else if (element instanceof PsiIdentifier psiIdentifier) {
+                } else if (element instanceof PsiIdentifier psiIdentifier) {
                     PsiMethodCallExpression validMethodCallFromSqlSessionIdentifier = PsiTreeUtil.getParentOfType(psiIdentifier, PsiMethodCallExpression.class, true);
-                    return JavaService.parseExpression(validMethodCallFromSqlSessionIdentifier);
-                }
-                // 默认处理（避免强转异常）
-                else {
+                    if (validMethodCallFromSqlSessionIdentifier == null) {
+                        return "未找到方法调用"; // 增加空值防护
+                    }
+
+                    PsiFile containingFile = element.getContainingFile();
+                    Project project = containingFile != null ? containingFile.getProject() : null;
+                    int lineNumber = 0;
+                    if (containingFile != null && project != null) {
+                        PsiDocumentManager documentManager = PsiDocumentManager.getInstance(project);
+                        Document document = documentManager.getDocument(containingFile);
+                        if (document != null) {
+                            int startOffset = validMethodCallFromSqlSessionIdentifier.getTextRange().getStartOffset();
+                            lineNumber = document.getLineNumber(startOffset) + 1;
+                        }
+                    }
+                    String firstParamValue = JavaService.parseExpression(validMethodCallFromSqlSessionIdentifier);
+                    String methodName = validMethodCallFromSqlSessionIdentifier.getMethodExpression().getReferenceName();
+                    String originalText = validMethodCallFromSqlSessionIdentifier.getText();
+                    String finalText = firstParamValue != null ? JavaService.replaceFirstParam(originalText, methodName, firstParamValue) : originalText;
+
+                    return " line:" + lineNumber + " -> " + finalText;
+                } else {
+                    // 默认处理（避免强转异常）
                     return element.getText().length() > 20 ? element.getText().substring(0, 20) + "..." : element.getText();
                 }
             }
@@ -120,12 +134,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             @NotNull
             @Override
             public String getContainerText(@NotNull PsiElement element) {
-                PsiFile containingFile = element.getContainingFile();
-                if (containingFile == null || containingFile.getVirtualFile() == null) {
-                    return "未知文件";
-                }
-                // 只返回文件名（如：UserMapper.java），去除完整路径
-                return containingFile.getVirtualFile().getName();
+                return element.getContainingFile().getVirtualFile().getName();
             }
         };
     }
@@ -368,34 +377,5 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
         return "找到源码 -> " + text;
     }
 
-    /**
-     * 合并两个 Optional<PsiClass[]> 中的数组，忽略空值，可选去重
-     */
-    private PsiClass[] mergePsiClasses(Optional<PsiClass[]> opt1, Optional<PsiClass[]> opt2) {
-        List<PsiClass> mergedList = new ArrayList<>();
-
-        // 添加第一个 Optional 中的元素（若存在）
-        opt1.ifPresent(psiClasses -> mergedList.addAll(Arrays.asList(psiClasses)));
-
-        // 添加第二个 Optional 中的元素（若存在）
-        opt2.ifPresent(psiClasses -> mergedList.addAll(Arrays.asList(psiClasses)));
-
-        // 若合并后为空，返回 null（最终会被 Optional 包装为 empty）
-        if (mergedList.isEmpty()) {
-            return null;
-        }
-
-        // 可选：去重（如果需要避免重复的 PsiClass）
-        // 注意：PsiClass 是 PsiElement 的子类，可通过 equals 判断是否为同一元素
-        List<PsiClass> distinctList = new ArrayList<>();
-        for (PsiClass psiClass : mergedList) {
-            if (!distinctList.contains(psiClass)) {
-                distinctList.add(psiClass);
-            }
-        }
-
-        // 转换为数组并返回
-        return distinctList.toArray(new PsiClass[0]);
-    }
 
 }
