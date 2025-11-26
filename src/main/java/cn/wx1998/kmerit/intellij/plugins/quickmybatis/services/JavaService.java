@@ -214,6 +214,29 @@ public class JavaService implements Serializable {
         }
     }
 
+
+    /**
+     * 判断方法是否是 SqlSession 的方法
+     *
+     * @param callExpression
+     * @return
+     */
+    public boolean isSqlSessionMethod(PsiMethodCallExpression callExpression) {
+        PsiMethod psiMethod = callExpression.resolveMethod();
+        PsiClass containingClass = psiMethod.getContainingClass();
+        String qualifiedName = containingClass.getQualifiedName();
+        final var classFilters = MyPluginSettings.getInstance().getClassFilters();
+        if (classFilters != null) {
+            for (ClassFilter classFilter : classFilters) {
+                final var pattern = classFilter.getPattern();
+                if (StringUtil.equals(pattern, qualifiedName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /**
      * 判断方法是否是 SqlSession 的方法
      *
