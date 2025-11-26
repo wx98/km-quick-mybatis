@@ -12,6 +12,7 @@ import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TagLocator;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TargetMethodsHolder;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TimeStrFormatter;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -358,18 +359,24 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         }
 
         // 拿到sql涉及的所有文件，全部刷新一遍
+        Set<String> fileList = new HashSet<>();
         for (String sqlIds : allSqlIdList) {
             Set<String> fileSet = cacheConfig.getSqlIdToFiles(sqlIds);
             for (String targetFilePath : fileSet) {
                 VirtualFile file = LocalFileSystem.getInstance().findFileByPath(targetFilePath);
                 if (file == null || !file.exists()) {
                     clearFileCache(targetFilePath); // 文件不存在，直接清除
-                    continue;
+                } else {
+                    fileList.add(targetFilePath);
                 }
-                // 重新解析文件并更新缓存
-                reparseAndCacheFile(file);
             }
         }
+        for (String file : fileList) {
+            // 重新解析文件并更新缓存
+            VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByPath(file);
+            reparseAndCacheFile(virtualFile);
+        }
+
         LOG.debug(CACHE_LOG_PREFIX + "刷新无效缓存完成");
     }
 
@@ -438,15 +445,15 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 MyBatisCachePersistenceManager.manualSaveCache(project);
 
                 long end = System.currentTimeMillis();
-
+                long ms = (end - start);
 
                 // 通知用户缓存刷好了
-                String context0 = "ヾ(ｏ･ω･)ﾉ 太好了，缓存刷新完毕，一共花了" + (end - start) + "ms <br/><br/>你也可以按 ctrl + alt + r 再次刷新";
-                String context1 = "⊙(・◇・)？缓存又刷新好了，这次花了" + (end - start) + "ms <br/><br/>你也可以按 ctrl + alt + r 再次刷新";
+                String context0 = "ヾ(ｏ･ω･)ﾉ 太好了，缓存刷新完毕，一共花了" + TimeStrFormatter.format(ms) + " <br/>你也可以按 ctrl + alt + r 再次刷新";
+                String context1 = "⊙(・◇・)？缓存又刷新好了，这次花了" + TimeStrFormatter.format(ms) + "<br/>你也可以按 ctrl + alt + r 再次刷新";
                 String context = numberOfRefreshes > 0 ? context1 : context0;
                 String leftBtnText = "干得好!";
                 String rightBtnText = "再刷一下?";
-                NotificationUtil.showCustomNotification(project, this.getClass().getSimpleName(), "km-quick-mybatis", context, leftBtnText, (pro, not) -> {
+                NotificationUtil.showCustomNotification(project, this.getClass().getName(), "km-quick-mybatis", context, leftBtnText, (pro, not) -> {
                     //左侧按钮什么都不敢
                 }, rightBtnText, (pro, not) -> {
                     // 右侧按钮调用刷新按钮，并且刷新次数+1
@@ -737,10 +744,19 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     }
                 });
             });
-            Map<String, List<PsiField>> methodCall = result.getStaticStringField();
-            methodCall.forEach((key, list) -> {
+            Map<String, List<PsiMethodCallExpression>> classMethodCall = result.getClassMethodCall();
+            classMethodCall.forEach((key, list) -> {
+                list.forEach(expression -> {
+                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(expression, key, JavaService.TYPE_METHOD_CALL);
+                    if (javaElementInfo != null) {
+                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                    }
+                });
+            });
+            Map<String, List<PsiField>> staticStringField = result.getStaticStringField();
+            staticStringField.forEach((key, list) -> {
                 list.forEach(psiField -> {
-                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiField, key, JavaService.TYPE_METHOD_CALL);
+                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiField, key, JavaService.TYPE_FIELD);
                     if (javaElementInfo != null) {
                         cacheConfig.addJavaElementMapping(key, javaElementInfo);
                     }

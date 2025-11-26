@@ -239,7 +239,7 @@ public class JavaParserDefault implements JavaParser {
                             Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
                             for (PsiMethodCallExpression callExpr : childrenOfType) {
                                 JavaService javaService = JavaService.getInstance(body.getProject());
-                                if (!javaService.isSqlSessionMethod(method)) {
+                                if (!javaService.isSqlSessionMethod(callExpr)) {
                                     continue;
                                 }
                                 PsiExpressionList argumentList = callExpr.getArgumentList();
