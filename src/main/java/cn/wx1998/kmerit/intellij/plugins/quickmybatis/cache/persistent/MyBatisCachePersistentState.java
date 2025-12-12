@@ -8,6 +8,8 @@ import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -69,6 +71,7 @@ public class MyBatisCachePersistentState implements PersistentStateComponent<MyB
         this.xmlFileToSqlIds = new HashMap<>(config.getXmlFileToSqlIds());
         this.fileDigestCache = new HashMap<>(config.getFileDigestCache());
         this.sqlIdToFiles = new HashMap<>(config.getSqlIdToFiles());
+        this.cleanInvalidCache();
     }
 
     /**
@@ -89,6 +92,58 @@ public class MyBatisCachePersistentState implements PersistentStateComponent<MyB
         config.getXmlFileToSqlIds().putAll(this.xmlFileToSqlIds);
         config.getFileDigestCache().putAll(this.fileDigestCache);
         config.getSqlIdToFiles().putAll(this.sqlIdToFiles);
+    }
+
+
+    /**
+     * 清理无效缓存
+     */
+    public void cleanInvalidCache() {
+        if (project == null || project.isDisposed()) return;
+        String projectBasePath = project.getBasePath();
+        if (projectBasePath == null) return;
+
+        // 1. 清理javaFileToSqlIds：移除已删除的Java文件
+        javaFileToSqlIds.keySet().removeIf(filePath -> {
+            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
+            return file == null || !file.exists();
+        });
+
+        // 2. 清理xmlFileToSqlIds：移除已删除的XML文件
+        xmlFileToSqlIds.keySet().removeIf(filePath -> {
+            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
+            return file == null || !file.exists();
+        });
+
+        // 3. 清理sqlIdToJavaElements：移除关联已删除文件的条目
+        sqlIdToJavaElements.values().forEach(elements -> {
+            elements.removeIf(elem -> {
+                VirtualFile file = LocalFileSystem.getInstance().findFileByPath(elem.getFilePath());
+                return file == null || !file.exists();
+            });
+        });
+        sqlIdToJavaElements.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+
+        // 4. 清理sqlIdToXmlElements：同理
+        sqlIdToXmlElements.values().forEach(elements -> {
+            elements.removeIf(elem -> {
+                VirtualFile file = LocalFileSystem.getInstance().findFileByPath(elem.getFilePath());
+                return file == null || !file.exists();
+            });
+        });
+        sqlIdToXmlElements.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+
+        // 5. 清理fileDigestCache：移除已删除文件的摘要
+        fileDigestCache.keySet().removeIf(filePath -> {
+            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
+            return file == null || !file.exists();
+        });
+
+        // 6. 清理fileDigestCache：移除已删除文件的摘要
+        sqlIdToFiles.keySet().removeIf(filePath -> {
+            VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
+            return file == null || !file.exists();
+        });
     }
 
     /**

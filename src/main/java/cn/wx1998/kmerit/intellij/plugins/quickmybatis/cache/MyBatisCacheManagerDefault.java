@@ -20,6 +20,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
@@ -146,6 +147,11 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     if (extension == null) continue;
                     if (!extension.equals("java") && !extension.equals("xml")) continue;
 
+                    // 索引没有就绪，直接跳过
+                    if (DumbService.getInstance(project).isDumb()) {
+                        return;
+                    }
+
                     // 4. 处理有效文件的变更
                     if (event instanceof VFileContentChangeEvent) {
                         LOG.debug(CACHE_LOG_PREFIX + "文件变化触发缓存失效: " + file.getPath());
@@ -221,21 +227,45 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     private void reparseAndCacheFile(@NotNull VirtualFile file) {
         ReadAction.run(() -> {
             PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
-            if (psiFile == null) return;
-            if (psiFile instanceof XmlFile xmlFile) {
-                // 重新解析XML文件
-                MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
-                MyBatisXmlParser.MyBatisParseResult parse = parser.parse(xmlFile);
-                syncToCacheManager(parse);
-            } else if (psiFile instanceof PsiJavaFile psiJavaFile) {
-                // 重新解析Java文件
-                JavaParser parser = JavaParserFactory.getRecommendedParser(project);
-                JavaParser.JavaParseResult parse = parser.parseEverything(psiJavaFile);
-                syncToCacheManager(parse);
+            Project project = null;
+            if (psiFile != null) {
+                project = psiFile.getProject();
+            }
+            if (project != null && DumbService.getInstance(project).isDumb()) {
+                DumbService.getInstance(project).runWhenSmart(() -> {
+                    ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                        doReparseAndCache(file);
+                    });
+                });
             }
         });
+
+        // 索引就绪时直接执行
+        doReparseAndCache(file);
     }
 
+    private void doReparseAndCache(VirtualFile file) {
+        try {
+            ReadAction.run(() -> {
+                PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
+                if (psiFile == null) return;
+                if (psiFile instanceof XmlFile xmlFile) {
+                    // 重新解析XML文件
+                    MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
+                    MyBatisXmlParser.MyBatisParseResult parse = parser.parse(xmlFile);
+                    syncToCacheManager(parse);
+                } else if (psiFile instanceof PsiJavaFile psiJavaFile) {
+                    // 重新解析Java文件
+                    JavaParser parser = JavaParserFactory.getRecommendedParser(project);
+                    JavaParser.JavaParseResult parse = parser.parseEverything(psiJavaFile);
+                    syncToCacheManager(parse);
+                }
+            });
+        } catch (IndexNotReadyException e) {
+            // 兜底：即使漏检，也捕获异常避免崩溃
+            LOG.warn("索引未就绪，跳过文件解析: " + file.getName(), e);
+        }
+    }
     // ========================= 缓存操作核心方法 =========================
 
     @Override
@@ -341,43 +371,57 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
     @Override
     public void refreshInvalidatedCaches(String filePath) {
-        LOG.debug(CACHE_LOG_PREFIX + "开始刷新无效缓存");
+        try {
+            LOG.debug(CACHE_LOG_PREFIX + "开始刷新无效缓存");
 
-        // 从缓存获取当前文件涉及的所有sqlId
-        Set<String> xmlSqlIdList = cacheConfig.getXmlFileToSqlIds().get(filePath);
-        Set<String> javaSqlIdList = cacheConfig.getJavaFileToSqlIds().get(filePath);
-        int xmlSqlIdListSize = xmlSqlIdList == null ? 0 : xmlSqlIdList.size();
-        int javaSqlIdListSize = javaSqlIdList == null ? 0 : javaSqlIdList.size();
-        Set<String> allSqlIdList = new HashSet<>(xmlSqlIdListSize + javaSqlIdListSize);
-        if (xmlSqlIdList != null) allSqlIdList.addAll(xmlSqlIdList);
-        if (javaSqlIdList != null) allSqlIdList.addAll(javaSqlIdList);
+            // 从缓存获取当前文件涉及的所有sqlId
+            Set<String> xmlSqlIdList = cacheConfig.getXmlFileToSqlIds().get(filePath);
+            Set<String> javaSqlIdList = cacheConfig.getJavaFileToSqlIds().get(filePath);
+            int xmlSqlIdListSize = xmlSqlIdList == null ? 0 : xmlSqlIdList.size();
+            int javaSqlIdListSize = javaSqlIdList == null ? 0 : javaSqlIdList.size();
+            Set<String> allSqlIdList = new HashSet<>(xmlSqlIdListSize + javaSqlIdListSize);
+            if (xmlSqlIdList != null) allSqlIdList.addAll(xmlSqlIdList);
+            if (javaSqlIdList != null) allSqlIdList.addAll(javaSqlIdList);
 
-        // 删除涉及的所有旧缓存
-        for (String sqlIds : allSqlIdList) {
-            cacheConfig.getSqlIdToXmlElements().remove(sqlIds);
-            cacheConfig.getSqlIdToJavaElements().remove(sqlIds);
-        }
+            // 删除涉及的所有旧缓存
+            for (String sqlIds : allSqlIdList) {
+                cacheConfig.getSqlIdToXmlElements().remove(sqlIds);
+                cacheConfig.getSqlIdToJavaElements().remove(sqlIds);
+            }
 
-        // 拿到sql涉及的所有文件，全部刷新一遍
-        Set<String> fileList = new HashSet<>();
-        for (String sqlIds : allSqlIdList) {
-            Set<String> fileSet = cacheConfig.getSqlIdToFiles(sqlIds);
-            for (String targetFilePath : fileSet) {
-                VirtualFile file = LocalFileSystem.getInstance().findFileByPath(targetFilePath);
-                if (file == null || !file.exists()) {
-                    clearFileCache(targetFilePath); // 文件不存在，直接清除
-                } else {
-                    fileList.add(targetFilePath);
+            // 拿到sql涉及的所有文件，全部刷新一遍
+            Set<String> fileList = new HashSet<>();
+            for (String sqlIds : allSqlIdList) {
+                Set<String> fileSet = cacheConfig.getSqlIdToFiles(sqlIds);
+                for (String targetFilePath : fileSet) {
+                    VirtualFile file = LocalFileSystem.getInstance().findFileByPath(targetFilePath);
+                    if (file == null || !file.exists()) {
+                        clearFileCache(targetFilePath); // 文件不存在，直接清除
+                    } else {
+                        fileList.add(targetFilePath);
+                    }
                 }
             }
-        }
-        for (String file : fileList) {
-            // 重新解析文件并更新缓存
-            VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByPath(file);
-            reparseAndCacheFile(virtualFile);
-        }
+            for (String file : fileList) {
+                // 重新解析文件并更新缓存
+                VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByPath(file);
+                if (virtualFile != null) {
+                    reparseAndCacheFile(virtualFile);
+                }
+            }
 
-        LOG.debug(CACHE_LOG_PREFIX + "刷新无效缓存完成");
+            LOG.debug(CACHE_LOG_PREFIX + "刷新无效缓存完成");
+        } catch (IndexNotReadyException e) {
+            // 记录日志，跳过本次刷新
+            LOG.warn("索引未就绪，跳过缓存刷新", e);
+            // 延迟到索引就绪后重试（可选）
+            DumbService.getInstance(project).runWhenSmart(new Runnable() {
+                @Override
+                public void run() {
+                    refreshInvalidatedCaches(filePath);
+                }
+            });
+        }
     }
 
     // ========================= 配置与统计 =========================
@@ -479,17 +523,18 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 获取 MyBatisXml 解析器
         MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
         // 计算每个文件的百分占比
-        double step = proportion / (myBatisXmlFiles.size() + 1);
+        int size = myBatisXmlFiles.size();
+        double step = proportion / (size + 1);
         // 遍历所有 MyBatisXml
-        for (XmlFile xmlFile : myBatisXmlFiles) {
+        for (int i = 0; i < size; i++) {
+            XmlFile xmlFile = myBatisXmlFiles.get(i);
             // 获取当前文件的绝对路径
             String filePath = xmlFile.getVirtualFile().getPath();
             // 获取项目的绝对路径
-            String basePath = project.getBasePath() == null ? "" : project.getBasePath();
             // 从文件绝对路径中删除项目绝对路径展示给用户
-            String showText = filePath.replace(basePath, "");
+            String showText = xmlFile.getVirtualFile().getName();
             // 设置进度条上方显示的进度文本
-            indicator.setText("解析XML文件: " + showText);
+            indicator.setText(showText + ":解析XML文件:(" + i + "/" + size + ")");
             // 设置进度条下显示的进度详细信息文本
             indicator.setText2(filePath);
             // 调用Xml解析器拿到结果
@@ -516,17 +561,17 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 获取 Java 解析器
         JavaParser parser = JavaParserFactory.getRecommendedParser(project);
         // 计算每个文件的百分占比
-        double step = proportion / (javaFiles.size() + 1);
+        int size = javaFiles.size();
+        double step = proportion / (size + 1);
         // 获取所有映射的Java文件路径
-        for (PsiJavaFile psiJavaFile : javaFiles) {
+        for (int i = 0; i < size; i++) {
+            PsiJavaFile psiJavaFile = javaFiles.get(i);
             // 获取当前文件的绝对路径
             String filePath = psiJavaFile.getVirtualFile().getPath();
-            // 获取项目的绝对路径
-            String basePath = project.getBasePath() == null ? "" : project.getBasePath();
             // 从文件绝对路径中删除项目绝对路径展示给用户
-            String showText = filePath.replace(basePath, "");
+            String showText = psiJavaFile.getVirtualFile().getName();
             // 设置进度条上方显示的进度文本
-            indicator.setText("解析Java文件: " + showText);
+            indicator.setText(showText + ":解析Java文件:(" + i + "/" + size + ")");
             // 设置进度条下显示的进度详细信息文本
             indicator.setText2(filePath);
             // 调用Xml解析器拿到结果
@@ -642,7 +687,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 scanForFileChanges(); // 调用父类的文件变更扫描
                 indicator.setText("增量刷新完成");
                 incrementCacheVersion();
-                MyBatisCachePersistenceManager.manualSaveCache(project);
+//                MyBatisCachePersistenceManager.manualSaveCache(project);
             }
         });
     }
