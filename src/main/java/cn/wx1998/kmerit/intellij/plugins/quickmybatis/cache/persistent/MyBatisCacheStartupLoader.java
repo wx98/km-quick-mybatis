@@ -1,6 +1,7 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerFactory;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.ProjectActivity;
 import kotlin.Unit;
@@ -8,16 +9,15 @@ import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class MyBatisCacheStartupLoader extends MyBatisCachePersistenceManager implements ProjectActivity {
+public class MyBatisCacheStartupLoader implements ProjectActivity {
 
     private long lastKnownVersion;
 
     @Nullable
     @Override
     public Object execute(@NotNull Project project, @NotNull Continuation<? super Unit> continuation) {
-        loadCache(project);
 
-        MyBatisCacheManagerDefault cacheManager = MyBatisCacheManagerDefault.getInstance(project);
+        MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
         this.lastKnownVersion = cacheManager.getCurrentCacheVersion();
 
         // 注册版本检查定时任务
@@ -39,7 +39,7 @@ public class MyBatisCacheStartupLoader extends MyBatisCachePersistenceManager im
                     return;
                 }
 
-                MyBatisCacheManagerDefault cacheManager = MyBatisCacheManagerDefault.getInstance(project);
+                MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
 
                 if (!cacheManager.isCacheUpToDate(lastKnownVersion)) {
                     // 缓存已更新，执行相应的处理逻辑

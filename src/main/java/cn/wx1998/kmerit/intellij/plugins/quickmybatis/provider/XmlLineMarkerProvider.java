@@ -1,6 +1,7 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheConfig;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCache;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlStructure;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
@@ -49,13 +50,12 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
      * The constant MAPPER_TAG 表示 MyBatis Mapper 根标签名称。
      */
     private static final String MAPPER_TAG = MyBatisXmlStructure.MAPPER_TAG;
-
-    MyBatisCacheConfig cacheConfig;
     /**
      * The constant TARGET_TYPES 包含此提供程序支持的 MyBatis 语句类型集合。
      * 这些包括 select、insert、update 和 delete 语句。
      */
     private static final Set<String> TARGET_TYPES = Set.of(MyBatisXmlStructure.SELECT_TAG, MyBatisXmlStructure.INSERT_TAG, MyBatisXmlStructure.UPDATE_TAG, MyBatisXmlStructure.DELETE_TAG);
+    MyBatisCache myBatisCache;
 
     @Override
     protected void collectNavigationMarkers(@NotNull PsiElement element, @NotNull Collection<? super RelatedItemLineMarkerInfo<?>> result) {
@@ -63,7 +63,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
         if (!isTheElement(element)) {
             return;
         }
-        cacheConfig = MyBatisCacheConfig.getInstance(element.getProject());
+        myBatisCache = MyBatisCacheFactory.getRecommendedParser(element.getProject());
 
         // 应用处理逻辑并生成导航标记
         Optional<? extends PsiElement[]> processResult = apply((XmlToken) element);
@@ -204,7 +204,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             }
 
             // 从缓存获取namespace对应的Java元素信息
-            Set<JavaElementInfo> javaElementInfos = cacheConfig.getSqlIdToJavaElements().get(namespace);
+            Set<JavaElementInfo> javaElementInfos = myBatisCache.getSqlIdToJavaElements().get(namespace);
             if (javaElementInfos == null || javaElementInfos.isEmpty()) {
                 LOG.debug("No JavaElementInfo found for namespace: " + namespace);
                 return Optional.empty();
@@ -247,7 +247,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             String fullSqlId = namespace + "." + id;
 
             // 从缓存获取SQL ID对应的Java元素信息
-            Set<JavaElementInfo> javaElementInfos = cacheConfig.getJavaElementsBySqlId(fullSqlId);
+            Set<JavaElementInfo> javaElementInfos = myBatisCache.getJavaElementsBySqlId(fullSqlId);
             if (javaElementInfos == null || javaElementInfos.isEmpty()) {
                 LOG.debug("No JavaElementInfo found for sqlId: " + fullSqlId);
                 return Optional.empty();

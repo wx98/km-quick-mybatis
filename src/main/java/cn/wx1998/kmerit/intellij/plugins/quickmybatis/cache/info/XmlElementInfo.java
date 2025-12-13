@@ -31,7 +31,7 @@ public class XmlElementInfo implements Comparable<XmlElementInfo> {
      */
     private String databaseId;
 
-    private XmlElementInfo() {
+    public XmlElementInfo() {
     }
 
 

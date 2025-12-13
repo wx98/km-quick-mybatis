@@ -1,7 +1,6 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache;
 
 import com.intellij.openapi.project.Project;
-import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
@@ -117,21 +116,21 @@ public interface MyBatisCacheManager {
      *
      * @return 缓存配置
      */
-    @NotNull MyBatisCacheConfig getCacheConfig();
+    @NotNull MyBatisCache getCacheConfig();
 
     /**
      * 设置缓存配置
      *
      * @param config 缓存配置
      */
-    void setCacheConfig(@NotNull MyBatisCacheConfig config);
+    void setCacheConfig(@NotNull MyBatisCache config);
 
-    /**
-     * 获取缓存统计信息
-     *
-     * @return 缓存统计信息
-     */
-    @NotNull CacheStatistics getCacheStatistics();
 
     void setScanInterval(long intervalMs);
+
+    void performFullCacheRefresh(int numberOfRefreshes);
+
+    long getCurrentCacheVersion();
+
+    boolean isCacheUpToDate(long lastKnownVersion);
 }

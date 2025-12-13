@@ -44,6 +44,10 @@
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil$NotificationSettings"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil$NotificationSettings"
         />
+        <projectService
+                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.DataBaseManager"
+                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.DataBaseManager"
+        />
 
         <!-- java 跳转到 xml   -->
         <codeInsight.lineMarkerProvider
@@ -73,11 +77,6 @@
         <projectService
                 id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
                 serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
-        />
-        <!-- 缓存持久化组件 -->
-        <projectService
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistentState"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistentState"
         />
         <!-- 插件配置类 -->
         <projectService

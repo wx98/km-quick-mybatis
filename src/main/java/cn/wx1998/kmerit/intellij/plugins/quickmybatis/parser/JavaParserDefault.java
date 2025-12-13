@@ -1,6 +1,7 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheConfig;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCache;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -19,12 +20,12 @@ public class JavaParserDefault implements JavaParser {
 
     private static final Logger LOG = Logger.getInstance(JavaParserDefault.class);
     private final Project project;
-    private final MyBatisCacheConfig cacheConfig; // 全局缓存管理器
+    private final MyBatisCache cacheConfig; // 全局缓存管理器
 
 
     public JavaParserDefault(Project project) {
         this.project = project;
-        this.cacheConfig = MyBatisCacheConfig.getInstance(project); // 初始化全局缓存
+        this.cacheConfig = MyBatisCacheFactory.getRecommendedParser(project);
         LOG.debug("为项目初始化默认Java解析器: " + project.getName());
     }
 
