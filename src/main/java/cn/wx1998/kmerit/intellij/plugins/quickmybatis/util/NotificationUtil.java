@@ -1,6 +1,7 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.util;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerFactory;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationGroupManager;
@@ -106,7 +107,7 @@ public class NotificationUtil {
                 // 左侧按钮：缓存刷新逻辑
                 (currentProject, notification) -> {
                     if (currentProject != null) {
-                        MyBatisCacheManagerDefault cacheManager = MyBatisCacheManagerDefault.getInstance(currentProject);
+                        MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
                         cacheManager.performFullCacheRefresh(0);
                     }
                 }, doNotShowBtnText,

@@ -1,6 +1,7 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.actions;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManager;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerFactory;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.Project;
@@ -17,7 +18,7 @@ public class RefreshMyBatisCacheAction extends AnAction {
         Project project = e.getProject();
         if (project == null) return;
 
-        MyBatisCacheManagerDefault cacheManager = MyBatisCacheManagerDefault.getInstance(project);
+        MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
 
         cacheManager.performFullCacheRefresh(0);
 

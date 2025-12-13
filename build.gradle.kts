@@ -67,6 +67,10 @@ dependencies {
     testImplementation(libs.junit)
     compileClasspath(libs.lombok)
 
+    runtimeOnly(libs.h2)
+    implementation(libs.dbutils)
+    implementation(libs.hikaricp)
+
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
         // 读取 ideaLocalPath 属性

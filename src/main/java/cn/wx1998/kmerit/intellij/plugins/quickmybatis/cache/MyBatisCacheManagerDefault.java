@@ -2,7 +2,6 @@ package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache;
 
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCachePersistenceManager;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.JavaParser;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.JavaParserFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParser;
@@ -44,7 +43,7 @@ import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -56,7 +55,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
- * 缓存管理器默认实现，基于 MyBatisCacheConfig 管理缓存生命周期
+ * 缓存管理器默认实现，基于 MyBatisCacheDefault 管理缓存生命周期
  * 负责缓存的创建、更新、失效、扫描和统计
  */
 public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
@@ -72,14 +71,12 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     private final Project project;
     // 缓存有效性标记（true=有效，false=需刷新）
     private final Map<String, Boolean> cacheValidityMap = new ConcurrentHashMap<>();
-    // 缓存统计信息
-    private final CacheStatistics statistics = new DefaultCacheStatistics();
     // 防止重复扫描的锁
     private final transient Object scanLock = new Object();
     // 缓存版本号，用于增量更新
     private final AtomicLong cacheVersion = new AtomicLong(1);
-    // 全局缓存核心配置（阶段一实现的缓存结构）
-    private MyBatisCacheConfig cacheConfig;
+    // 全局缓存核心配置
+    private MyBatisCache myBatisCache;
     // 定时扫描间隔（5分钟，单位：毫秒）
     private long scanIntervalMs = 5 * 60 * 1000;
 
@@ -88,7 +85,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      */
     MyBatisCacheManagerDefault(@NotNull Project project) {
         this.project = project;
-        this.cacheConfig = MyBatisCacheConfig.getInstance(project);
+        this.myBatisCache = MyBatisCacheFactory.getRecommendedParser(project);
         this.initialize();
     }
 
@@ -192,8 +189,8 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         int changedCount = 0;
 
         // 遍历所有缓存的文件摘要
-        if (cacheConfig.getAllFileDigest() != null) {
-            for (Map.Entry<String, String> entry : cacheConfig.getAllFileDigest().entrySet()) {
+        if (myBatisCache.getAllFileDigest() != null) {
+            for (Map.Entry<String, String> entry : myBatisCache.getAllFileDigest().entrySet()) {
                 String filePath = entry.getKey();
                 String oldDigest = entry.getValue();
 
@@ -206,12 +203,12 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 }
 
                 // 计算当前文件摘要
-                String newDigest = MyBatisCacheConfig.calculateFileDigest(filePath);
+                String newDigest = myBatisCache.calculateFileDigest(filePath);
                 if (!newDigest.equals(oldDigest)) {
                     // 摘要不一致，文件已修改
                     LOG.debug(CACHE_LOG_PREFIX + "文件内容变更: " + filePath + "（旧摘要: " + oldDigest + ", 新摘要: " + newDigest + "）");
                     clearFileCache(filePath);
-                    cacheConfig.saveFileDigest(file, newDigest); // 更新摘要
+                    myBatisCache.saveFileDigest(file, newDigest); // 更新摘要
                     reparseAndCacheFile(file); // 重新解析
                     changedCount++;
                 }
@@ -281,23 +278,23 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     @Override
     @Nullable
     public Set<String> getXmlFilesForClass(@NotNull String className) {
-        // 从 cacheConfig 中查询Java类关联的所有XML文件路径
-        Set<String> sqlIds = cacheConfig.getSqlIdsByJavaFile(className); // 假设类名作为Java文件路径的标识
+        // 从  myBatisCache 中查询Java类关联的所有XML文件路径
+        Set<String> sqlIds = myBatisCache.getSqlIdsByJavaFile(className); // 假设类名作为Java文件路径的标识
         if (sqlIds == null) return null;
 
-        return sqlIds.stream().flatMap(sqlId -> cacheConfig.getXmlElementsBySqlId(sqlId).stream()).map(XmlElementInfo::getFilePath).collect(Collectors.toSet());
+        return sqlIds.stream().flatMap(sqlId -> myBatisCache.getXmlElementsBySqlId(sqlId).stream()).map(XmlElementInfo::getFilePath).collect(Collectors.toSet());
     }
 
     @Override
     @Nullable
     public String getClassForXmlFile(@NotNull String xmlFilePath) {
-        // 从 cacheConfig 中查询XML文件关联的Java类
-        Set<String> sqlIds = cacheConfig.getSqlIdsByXmlFile(xmlFilePath);
+        // 从  myBatisCache 中查询XML文件关联的Java类
+        Set<String> sqlIds = myBatisCache.getSqlIdsByXmlFile(xmlFilePath);
         if (sqlIds == null || sqlIds.isEmpty()) return null;
 
         // 取第一个SQL ID关联的Java类（实际场景可能需要更复杂的逻辑）
         String firstSqlId = sqlIds.iterator().next();
-        Set<JavaElementInfo> javaElements = cacheConfig.getJavaElementsBySqlId(firstSqlId);
+        Set<JavaElementInfo> javaElements = myBatisCache.getJavaElementsBySqlId(firstSqlId);
         if (javaElements.isEmpty()) return null;
 
         return javaElements.iterator().next().getFilePath(); // 假设Java文件路径对应类名
@@ -309,7 +306,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 生成SQL ID（与 JavaService 的计算逻辑一致）
         String sqlId = className + "." + methodName; // 需与配置的命名规则同步
         // 检查缓存中是否存在该SQL ID
-        Set<XmlElementInfo> xmlElements = cacheConfig.getXmlElementsBySqlId(sqlId);
+        Set<XmlElementInfo> xmlElements = myBatisCache.getXmlElementsBySqlId(sqlId);
         return xmlElements.isEmpty() ? null : sqlId;
     }
 
@@ -317,7 +314,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     @Nullable
     public String getMethodForStatementId(@NotNull String xmlFilePath, @NotNull String statementId) {
         // 从SQL ID反向查询Java方法
-        Set<JavaElementInfo> javaElements = cacheConfig.getJavaElementsBySqlId(statementId);
+        Set<JavaElementInfo> javaElements = myBatisCache.getJavaElementsBySqlId(statementId);
         if (javaElements.isEmpty()) return null;
 
         // 过滤出当前XML文件关联的Java方法（简化逻辑）
@@ -330,18 +327,16 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     @Override
     public void clearClassCache(@NotNull String className) {
         // 清除类关联的所有缓存
-        cacheConfig.clearJavaFileCache(className);
+        myBatisCache.clearJavaFileCache(className);
         cacheValidityMap.put(className, false);
-        statistics.recordInvalidation();
         LOG.debug(CACHE_LOG_PREFIX + "清除类缓存: " + className);
     }
 
     @Override
     public void clearXmlFileCache(@NotNull String xmlFilePath) {
         // 清除XML文件关联的所有缓存
-        cacheConfig.clearXmlFileCache(xmlFilePath);
+        myBatisCache.clearXmlFileCache(xmlFilePath);
         cacheValidityMap.put(xmlFilePath, false);
-        statistics.recordInvalidation();
         LOG.debug(CACHE_LOG_PREFIX + "清除XML文件缓存: " + xmlFilePath);
     }
 
@@ -357,9 +352,8 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
     @Override
     public void clearAllCache() {
-        cacheConfig.clearAllCache();
+        myBatisCache.clearAllCache();
         cacheValidityMap.clear();
-        statistics.reset();
         LOG.debug(CACHE_LOG_PREFIX + "清除所有缓存");
     }
 
@@ -375,33 +369,15 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             LOG.debug(CACHE_LOG_PREFIX + "开始刷新无效缓存");
 
             // 从缓存获取当前文件涉及的所有sqlId
-            Set<String> xmlSqlIdList = cacheConfig.getXmlFileToSqlIds().get(filePath);
-            Set<String> javaSqlIdList = cacheConfig.getJavaFileToSqlIds().get(filePath);
-            int xmlSqlIdListSize = xmlSqlIdList == null ? 0 : xmlSqlIdList.size();
-            int javaSqlIdListSize = javaSqlIdList == null ? 0 : javaSqlIdList.size();
-            Set<String> allSqlIdList = new HashSet<>(xmlSqlIdListSize + javaSqlIdListSize);
-            if (xmlSqlIdList != null) allSqlIdList.addAll(xmlSqlIdList);
-            if (javaSqlIdList != null) allSqlIdList.addAll(javaSqlIdList);
+            Set<String> allSqlIdList = myBatisCache.getAllSqlIdByFilePath(filePath);
+
+            // 拿到sql涉及的所有文件
+            Set<String> fileList = myBatisCache.getAllFilePathsBySqlIdList(allSqlIdList);
 
             // 删除涉及的所有旧缓存
-            for (String sqlIds : allSqlIdList) {
-                cacheConfig.getSqlIdToXmlElements().remove(sqlIds);
-                cacheConfig.getSqlIdToJavaElements().remove(sqlIds);
-            }
+            myBatisCache.removeBySqlIdList(allSqlIdList);
 
-            // 拿到sql涉及的所有文件，全部刷新一遍
-            Set<String> fileList = new HashSet<>();
-            for (String sqlIds : allSqlIdList) {
-                Set<String> fileSet = cacheConfig.getSqlIdToFiles(sqlIds);
-                for (String targetFilePath : fileSet) {
-                    VirtualFile file = LocalFileSystem.getInstance().findFileByPath(targetFilePath);
-                    if (file == null || !file.exists()) {
-                        clearFileCache(targetFilePath); // 文件不存在，直接清除
-                    } else {
-                        fileList.add(targetFilePath);
-                    }
-                }
-            }
+            // 刷新一遍涉及的所有文件
             for (String file : fileList) {
                 // 重新解析文件并更新缓存
                 VirtualFile virtualFile = LocalFileSystem.getInstance().findFileByPath(file);
@@ -428,21 +404,16 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
     @Override
     @NotNull
-    public MyBatisCacheConfig getCacheConfig() {
-        return cacheConfig;
+    public MyBatisCache getCacheConfig() {
+        return myBatisCache;
     }
 
     @Override
-    public void setCacheConfig(@NotNull MyBatisCacheConfig config) {
-        this.cacheConfig = config;
+    public void setCacheConfig(@NotNull MyBatisCache myBatisCache) {
+        this.myBatisCache = myBatisCache;
         LOG.debug(CACHE_LOG_PREFIX + "更新缓存配置");
     }
 
-    @Override
-    @NotNull
-    public CacheStatistics getCacheStatistics() {
-        return statistics;
-    }
 
     @Override
     public void setScanInterval(long intervalMs) {
@@ -456,6 +427,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     /**
      * 执行全局缓存刷新（带进度提示）
      */
+    @Override
     public void performFullCacheRefresh(int numberOfRefreshes) {
         ProgressManager.getInstance().run(new Task.Backgroundable(project, "刷新插件MyBatis缓存") {
             @Override
@@ -486,7 +458,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 incrementCacheVersion();
 
                 indicator.setText("缓存刷新完成");
-                MyBatisCachePersistenceManager.manualSaveCache(project);
+                // todo : 这里要持久化吗？
 
                 long end = System.currentTimeMillis();
                 long ms = (end - start);
@@ -623,6 +595,8 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 计算每个方法的进度步长
         double step = proportion / targetMethods.size();
 
+        List<JavaElementInfo> javaElementInfoList = new ArrayList<>();
+
         // 这里假设该方法已经在一个后台任务中被调用
         for (PsiMethod targetMethod : targetMethods) {
             // 更新进度信息
@@ -650,7 +624,14 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                         String sqlId = JavaService.parseExpression(firstArgument);
 
                         if (sqlId != null && !sqlId.isEmpty()) {
-                            syncToCacheManager(sqlId, callExpr);
+
+                            // 检查是否有id属性
+                            ReadAction.run(() -> {
+                                PsiElement originalElement = element.getOriginalElement();
+                                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_METHOD_CALL);
+                                javaElementInfoList.add(javaElementInfo);
+                            });
+
                         }
                     }
                     return true; // 返回 true 继续遍历
@@ -658,6 +639,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
             });
 
+            myBatisCache.addJavaElementMapping(javaElementInfoList);
             // 更新进度
             progress[0] += step;
             indicator.setFraction(progress[0]);
@@ -666,15 +648,6 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         indicator.setText("MyBatis方法调用搜索完成。");
     }
 
-    private void syncToCacheManager(String sqlId, PsiMethodCallExpression element) {
-        // 检查是否有id属性
-        ReadAction.run(() -> {
-            PsiElement originalElement = element.getOriginalElement();
-
-            JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_METHOD_CALL);
-            cacheConfig.addJavaElementMapping(sqlId, javaElementInfo);
-        });
-    }
 
     /**
      * 增量刷新缓存（只刷新变更的文件）
@@ -702,6 +675,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     /**
      * 获取当前缓存版本号
      */
+    @Override
     public long getCurrentCacheVersion() {
         return cacheVersion.get();
     }
@@ -709,6 +683,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     /**
      * 检查缓存是否需要更新（与其他模块同步）
      */
+    @Override
     public boolean isCacheUpToDate(long lastKnownVersion) {
         return cacheVersion.get() == lastKnownVersion;
     }
@@ -725,9 +700,10 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             String namespaceName = result.getNamespaceName();
             XmlTag rootTag = result.getNamespace();
 
+            List<XmlElementInfo> xmlElementInfoList = new ArrayList<>();
             XmlElementInfo xmlElementInfoRootTag = TagLocator.createXmlElementInfo(rootTag, namespaceName, "", rootTag.getName());
             if (xmlElementInfoRootTag != null) {
-                cacheConfig.addXmlElementMapping(namespaceName, xmlElementInfoRootTag);
+                xmlElementInfoList.add(xmlElementInfoRootTag);
             }
 
             Map<String, List<XmlTag>> statements = result.getStatements();
@@ -740,10 +716,12 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     databaseId = databaseId != null ? databaseId : "";
                     XmlElementInfo xmlElementInfo = TagLocator.createXmlElementInfo(tag, sqlId, databaseId, tag.getName());
                     if (xmlElementInfo != null) {
-                        cacheConfig.addXmlElementMapping(sqlId, xmlElementInfo);
+                        xmlElementInfoList.add(xmlElementInfo);
                     }
                 }
             }
+
+            myBatisCache.addXmlElementMapping(xmlElementInfoList);
         });
     }
 
@@ -756,11 +734,13 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 检查是否有id属性
         ReadAction.run(() -> {
 
+            List<JavaElementInfo> javaElementInfoList = new ArrayList<>();
+
             Map<String, PsiClass> classes = result.getClasses();
             classes.forEach((key, psiClass) -> {
                 JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiClass, key, JavaService.TYPE_CLASS);
                 if (javaElementInfo != null) {
-                    cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                    javaElementInfoList.add(javaElementInfo);
                 }
             });
 
@@ -768,7 +748,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             interfaces.forEach((key, psiClass) -> {
                 JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiClass, key, JavaService.TYPE_INTERFACE_CLASS);
                 if (javaElementInfo != null) {
-                    cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                    javaElementInfoList.add(javaElementInfo);
                 }
             });
             Map<String, List<PsiMethod>> allClassMethods = result.getAllClassMethods();
@@ -776,7 +756,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 list.forEach(classMethod -> {
                     JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
                     if (javaElementInfo != null) {
-                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                        javaElementInfoList.add(javaElementInfo);
                     }
                 });
             });
@@ -785,7 +765,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 list.forEach(psiMethod -> {
                     JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiMethod, key, JavaService.TYPE_INTERFACE_METHOD);
                     if (javaElementInfo != null) {
-                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                        javaElementInfoList.add(javaElementInfo);
                     }
                 });
             });
@@ -794,7 +774,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 list.forEach(expression -> {
                     JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(expression, key, JavaService.TYPE_METHOD_CALL);
                     if (javaElementInfo != null) {
-                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                        javaElementInfoList.add(javaElementInfo);
                     }
                 });
             });
@@ -803,81 +783,12 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 list.forEach(psiField -> {
                     JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiField, key, JavaService.TYPE_FIELD);
                     if (javaElementInfo != null) {
-                        cacheConfig.addJavaElementMapping(key, javaElementInfo);
+                        javaElementInfoList.add(javaElementInfo);
                     }
                 });
             });
+            myBatisCache.addJavaElementMapping(javaElementInfoList);
         });
     }
-
-    /**
-     * 缓存统计默认实现
-     */
-    private static class DefaultCacheStatistics implements CacheStatistics {
-        private final Object lock = new Object();
-        private long hitCount;
-        private long missCount;
-        private long invalidationCount;
-
-        @Override
-        public long getHitCount() {
-            synchronized (lock) {
-                return hitCount;
-            }
-        }
-
-        @Override
-        public long getMissCount() {
-            synchronized (lock) {
-                return missCount;
-            }
-        }
-
-        @Override
-        public long getInvalidationCount() {
-            synchronized (lock) {
-                return invalidationCount;
-            }
-        }
-
-        @Override
-        public double getHitRate() {
-            synchronized (lock) {
-                long total = hitCount + missCount;
-                return total == 0 ? 0 : (double) hitCount / total;
-            }
-        }
-
-        @Override
-        public void recordHit() {
-            synchronized (lock) {
-                hitCount++;
-            }
-        }
-
-        @Override
-        public void recordMiss() {
-            synchronized (lock) {
-                missCount++;
-            }
-        }
-
-        @Override
-        public void recordInvalidation() {
-            synchronized (lock) {
-                invalidationCount++;
-            }
-        }
-
-        @Override
-        public void reset() {
-            synchronized (lock) {
-                hitCount = 0;
-                missCount = 0;
-                invalidationCount = 0;
-            }
-        }
-    }
-
 
 }

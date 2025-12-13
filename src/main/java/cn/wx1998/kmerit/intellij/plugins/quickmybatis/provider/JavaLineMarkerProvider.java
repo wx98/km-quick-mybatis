@@ -1,6 +1,7 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider;
 
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheConfig;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCache;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheFactory;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.TagLocator;
@@ -36,7 +37,7 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
     @Override
     protected void collectNavigationMarkers(@NotNull PsiElement element, @NotNull Collection<? super RelatedItemLineMarkerInfo<?>> result) {
         Project project = element.getProject();
-        MyBatisCacheConfig cacheConfig = MyBatisCacheConfig.getInstance(project);
+        MyBatisCache cacheConfig = MyBatisCacheFactory.getRecommendedParser(project);
         JavaService javaService = JavaService.getInstance(project);
         ElementFilter filter = new ElementFilter() {
             @Override

@@ -27,7 +27,7 @@ public class JavaElementInfo implements Comparable<JavaElementInfo> {
      */
     private String sqlId;
 
-    private JavaElementInfo() {
+    public JavaElementInfo() {
     }
 
     public JavaElementInfo(@NotNull String filePath, int startOffset, int endOffset, @NotNull String elementType, @NotNull String sqlId) {
