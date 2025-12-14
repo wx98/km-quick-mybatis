@@ -188,4 +188,14 @@ public class XmlElementDao extends BaseDao {
             throw new RuntimeException("清空element_xml表所有数据失败", e);
         }
     }
+
+    public int countElementXmlTable() {
+        String sql = "SELECT COUNT(1) AS count FROM element_xml";
+        try (Connection conn = getConnection()) {
+            List<Long> countList = queryRunner.query(conn, sql, new ColumnListHandler<>("count"));
+            return countList == null || countList.isEmpty() ? 0 : countList.get(0).intValue();
+        } catch (SQLException e) {
+            throw new RuntimeException("统计element_xml表记录数失败", e);
+        }
+    }
 }

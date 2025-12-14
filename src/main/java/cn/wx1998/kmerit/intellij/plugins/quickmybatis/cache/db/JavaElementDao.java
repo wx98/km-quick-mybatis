@@ -186,4 +186,28 @@ public class JavaElementDao extends BaseDao {
             throw new RuntimeException("清空element_java表所有数据失败", e);
         }
     }
+
+    public int countElementJavaTable() {
+        String sql = "SELECT COUNT(1) AS count FROM element_java";
+        try (Connection conn = getConnection()) {
+            // 使用 ColumnListHandler 获取单行单列结果
+            List<Long> countList = queryRunner.query(conn, sql, new ColumnListHandler<>("count"));
+            // 空表返回0，否则返回计数结果（转int，适配常规数据量场景）
+            return countList == null || countList.isEmpty() ? 0 : countList.get(0).intValue();
+        } catch (SQLException e) {
+            throw new RuntimeException("统计element_java表记录数失败", e);
+        }
+    }
+
+    public int countElementJavaTableByMethodCall() {
+        String sql = "SELECT COUNT(1) AS count FROM element_java where element_type = 'methodCall' ";
+        try (Connection conn = getConnection()) {
+            // 使用 ColumnListHandler 获取单行单列结果
+            List<Long> countList = queryRunner.query(conn, sql, new ColumnListHandler<>("count"));
+            // 空表返回0，否则返回计数结果（转int，适配常规数据量场景）
+            return countList == null || countList.isEmpty() ? 0 : countList.get(0).intValue();
+        } catch (SQLException e) {
+            throw new RuntimeException("统计element_java表中methodCall记录数失败", e);
+        }
+    }
 }

@@ -171,4 +171,14 @@ public class FileDigestDao extends BaseDao {
             throw new RuntimeException("清空file_digest表所有数据失败", e);
         }
     }
+
+    public int countFileDigestTable() {
+        String sql = "SELECT COUNT(1) AS count FROM file_digest";
+        try (Connection conn = getConnection()) {
+            List<Long> countList = queryRunner.query(conn, sql, new ColumnListHandler<>("count"));
+            return countList == null || countList.isEmpty() ? 0 : countList.get(0).intValue();
+        } catch (SQLException e) {
+            throw new RuntimeException("统计file_digest表记录数失败", e);
+        }
+    }
 }

@@ -126,4 +126,6 @@ public interface MyBatisCacheManager {
     long getCurrentCacheVersion();
 
     boolean isCacheUpToDate(long lastKnownVersion);
+
+    boolean checkForCacheInvalidationAndNotify(Project project);
 }
