@@ -62,7 +62,6 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
         // 验证文件有效性
         boolean isValid = isValidMyBatisFile(file);
         if (!isValid) {
-            LOG.warn("无效的MyBatis XML文件: " + file.getName());
             return null;
         }
         // 创建解析结果

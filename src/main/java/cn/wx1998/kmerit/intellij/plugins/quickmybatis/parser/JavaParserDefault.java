@@ -61,7 +61,6 @@ public class JavaParserDefault implements JavaParser {
         // 验证文件有效性
         boolean isValid = isValidJavaFile(file);
         if (!isValid) {
-            LOG.warn("无效的Java文件: " + file.getName());
             return null;
         }
 
@@ -77,7 +76,6 @@ public class JavaParserDefault implements JavaParser {
         // 验证文件有效性
         boolean isValid = isValidJavaFile(file);
         if (!isValid) {
-            LOG.warn("无效的Java文件: " + file.getName());
             return null;
         }
 
