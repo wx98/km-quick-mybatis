@@ -46,4 +46,11 @@ public interface MyBatisCache {
 
     int removeBySqlIdList(Set<String> sqlIdList);
 
+    int countFileDigestTable();
+
+    int countElementJavaTable();
+
+    int countElementXmlTable();
+
+    int countElementJavaTableByMethodCall();
 }

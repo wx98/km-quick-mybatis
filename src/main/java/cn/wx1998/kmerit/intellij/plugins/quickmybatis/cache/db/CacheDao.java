@@ -185,4 +185,20 @@ public class CacheDao extends BaseDao {
             throw new RuntimeException("删除SQL ID列表[" + String.join(",", sqlIdList) + "]关联的记录失败", e);
         }
     }
+
+    public int countElementJavaTable() {
+        return javaElementDao.countElementJavaTable();
+    }
+
+    public int countFileDigestTable() {
+        return fileDigestDao.countFileDigestTable();
+    }
+
+    public int countElementXmlTable() {
+        return xmlElementDao.countElementXmlTable();
+    }
+
+    public int countElementJavaTableByMethodCall() {
+        return javaElementDao.countElementJavaTableByMethodCall();
+    }
 }

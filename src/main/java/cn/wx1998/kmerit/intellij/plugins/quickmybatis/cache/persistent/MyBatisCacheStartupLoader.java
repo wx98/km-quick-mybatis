@@ -11,7 +11,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class MyBatisCacheStartupLoader implements ProjectActivity {
 
-    private long lastKnownVersion;
+    private long lastKnownVersion = 0;
 
     @Nullable
     @Override
@@ -38,23 +38,9 @@ public class MyBatisCacheStartupLoader implements ProjectActivity {
                     timer.cancel();
                     return;
                 }
-
                 MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
-
-                if (!cacheManager.isCacheUpToDate(lastKnownVersion)) {
-                    // 缓存已更新，执行相应的处理逻辑
-                    handleCacheUpdate(project);
-                    lastKnownVersion = cacheManager.getCurrentCacheVersion();
-                }
+                cacheManager.checkForCacheInvalidationAndNotify(project);
             }
         }, 0, 5000); // 每5秒检查一次
-    }
-
-    /**
-     * 处理缓存更新逻辑
-     */
-    private void handleCacheUpdate(Project project) {
-        // 可以在这里通知其他组件缓存已更新
-        // 例如刷新UI、更新相关视图等
     }
 }

@@ -91,6 +91,11 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     private long scanIntervalMs = 5 * 60 * 1000;
 
     /**
+     * 通知标记
+     */
+    public static boolean notifyFlag = true;
+
+    /**
      * 私有构造器（单例模式）
      */
     MyBatisCacheManagerDefault(@NotNull Project project) {
@@ -476,6 +481,8 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
                 indicator.setText("缓存刷新完成");
 
+                notifyFlag = true;
+
                 long end = System.currentTimeMillis();
                 long ms = (end - start);
 
@@ -816,4 +823,50 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         });
     }
 
+    @Override
+    public boolean checkForCacheInvalidationAndNotify(Project project) {
+        int countElementJavaTable = myBatisCache.countElementJavaTable();
+        int countElementXmlTable = myBatisCache.countElementXmlTable();
+        int countFileDigestTable = myBatisCache.countFileDigestTable();
+
+        int countElementJavaTableByMethodCall = myBatisCache.countElementJavaTableByMethodCall();
+
+        // java 为空 xml 不为空
+        boolean flag1 = countElementJavaTable == 0 && countElementXmlTable != 0;
+        // java 不为空 xml 为空
+        boolean flag2 = countElementJavaTable != 0 && countElementXmlTable == 0;
+        // java 和 xml 都为空
+        boolean flag3 = countElementJavaTable == 0 && countElementXmlTable == 0;
+        // java 和 xml 任意一个不为空 但是 FileDigest 为空
+        boolean flag4 = (countElementJavaTable != 0 || countElementXmlTable != 0) && countFileDigestTable == 0;
+        // 没有 methodCall 类型的数据
+        boolean flag5 = countElementJavaTableByMethodCall == 0;
+
+        String showText = "检测到缓存可能失效,原因是:";
+        String notificationKey = this.getClass().getSimpleName();
+        if (flag1) {
+            showText += "【Xml缓存不为空但是Java为空】";
+            notificationKey += "-flag1";
+        } else if (flag2) {
+            showText += "【Java缓存不为空但是Xml为空】";
+            notificationKey += "-flag2";
+        } else if (flag3) {
+            showText += "【Java缓存和Xml缓存都为空】";
+            notificationKey += "-flag3";
+        } else if (flag4) {
+            showText += "【Java和Xml缓存都不为空但是文件摘要缓存为空】";
+            notificationKey += "-flag4";
+        } else if (flag5) {
+            showText += "【没有Java方法调用类型的缓存】";
+            notificationKey += "-flag5";
+        }
+
+        if ((flag1 || flag2 || flag3 || flag4 || flag5) && notifyFlag) {
+            notifyFlag = false;
+            NotificationUtil.showCacheRefreshNotification(project, notificationKey, "km-quick-mybatis提示", showText, "刷新缓存", "不再建议");
+            return true;
+        } else {
+            return false;
+        }
+    }
 }

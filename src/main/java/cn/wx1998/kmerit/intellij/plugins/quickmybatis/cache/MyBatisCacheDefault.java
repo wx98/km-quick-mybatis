@@ -240,4 +240,24 @@ public class MyBatisCacheDefault implements MyBatisCache {
     public int removeBySqlIdList(Set<String> sqlIdList) {
         return cacheDao.removeBySqlIdList(sqlIdList);
     }
+
+    @Override
+    public int countFileDigestTable() {
+        return cacheDao.countFileDigestTable();
+    }
+
+    @Override
+    public int countElementJavaTable() {
+        return cacheDao.countElementJavaTable();
+    }
+
+    @Override
+    public int countElementXmlTable() {
+        return cacheDao.countElementXmlTable();
+    }
+
+    @Override
+    public int countElementJavaTableByMethodCall() {
+        return cacheDao.countElementJavaTableByMethodCall();
+    }
 }
