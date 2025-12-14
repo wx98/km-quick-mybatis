@@ -10,7 +10,12 @@ import org.apache.commons.collections.CollectionUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -20,13 +25,15 @@ import java.util.stream.Collectors;
 public class MyBatisCacheDefault implements MyBatisCache {
 
     private static final Logger LOG = Logger.getInstance(MyBatisCacheDefault.class);
-
-    private static CacheDao cacheDao;
-
     /**
      * 单例模式（按项目隔离缓存）
      */
     private static final Map<Project, MyBatisCacheDefault> INSTANCES = new ConcurrentHashMap<>();
+
+    /**
+     * 缓存操作
+     */
+    private static CacheDao cacheDao;
 
     /**
      * 私有构造器

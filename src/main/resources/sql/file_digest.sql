@@ -1,6 +1,6 @@
 create table if not exists file_digest
 (
-    file_path varchar not null,
-    digest    char(8) not null,
-    index     file_digest_file_path (file_path)
+    file_path character varying not null,
+    digest    character varying not null,
+    UNIQUE INDEX idx_unique_file_digest (file_path)
 )

@@ -43,7 +43,7 @@ public class FileDigestDao extends BaseDao {
         if (digest == null || digest.trim().isEmpty()) {
             throw new IllegalArgumentException("摘要码不能为空，无法插入");
         }
-        String sql = "INSERT IGNORE INTO file_digest (file_path, digest) VALUES (?, ?)";
+        String sql = "INSERT INTO file_digest (file_path, digest) VALUES (?, ?) ON DUPLICATE KEY UPDATE digest = VALUES(digest) ";
 
         try (Connection conn = getConnection()) {
             queryRunner.update(conn, sql, filePath, digest);
@@ -59,7 +59,7 @@ public class FileDigestDao extends BaseDao {
         if (digestMap.isEmpty()) {
             return 0;
         }
-        String sql = "INSERT IGNORE INTO file_digest (file_path, digest) VALUES (?, ?)";
+        String sql = "INSERT IGNORE INTO file_digest (file_path, digest) VALUES (?, ?) ON DUPLICATE KEY UPDATE digest = VALUES(digest) ";
 
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);

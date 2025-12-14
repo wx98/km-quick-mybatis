@@ -98,13 +98,6 @@ public interface MyBatisCacheManager {
      */
     void clearAllCache();
 
-    /**
-     * 检查文件缓存是否有效
-     *
-     * @param filePath 文件路径
-     * @return 如果缓存有效则返回true，否则返回false
-     */
-    boolean isCacheValid(@NotNull String filePath);
 
     /**
      * 刷新所有失效的缓存

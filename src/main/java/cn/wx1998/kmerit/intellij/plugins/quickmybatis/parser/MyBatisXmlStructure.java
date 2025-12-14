@@ -2,7 +2,11 @@ package cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * MyBatis XML结构定义类

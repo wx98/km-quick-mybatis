@@ -3,8 +3,6 @@ package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Set;
-
 /**
  * MyBatis缓存工厂
  */

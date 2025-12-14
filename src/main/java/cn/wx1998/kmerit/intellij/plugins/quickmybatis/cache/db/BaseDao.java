@@ -17,21 +17,6 @@ import java.sql.SQLException;
  * DAO 基础类，封装公共资源和方法
  */
 public abstract class BaseDao {
-    protected final DataBaseManager h2Manager;
-    protected final QueryRunner queryRunner;
-
-    public BaseDao(@NotNull Project project) {
-        this.h2Manager = DataBaseManager.getInstance(project);
-        this.queryRunner = new QueryRunner();
-    }
-
-    /**
-     * 获取数据库连接
-     */
-    protected Connection getConnection() throws SQLException {
-        return h2Manager.getConnection();
-    }
-
     // 自定义BeanProcessor，实现下划线转驼峰
     protected static BeanProcessor beanProcessor = new BeanProcessor() {
         @Override
@@ -87,7 +72,34 @@ public abstract class BaseDao {
             return sb.toString();
         }
     };
-    // 构造自定义RowProcessor
+    /**
+     * 构造自定义RowProcessor
+     */
     protected static RowProcessor rowProcessor = new BasicRowProcessor(beanProcessor);
+    /**
+     * 数据库管理
+     */
+    protected final DataBaseManager h2Manager;
+    /**
+     * 用 commons-dbutils 执行sql
+     */
+    protected final QueryRunner queryRunner;
+
+    /**
+     * 构造类
+     *
+     * @param project project
+     */
+    public BaseDao(@NotNull Project project) {
+        this.h2Manager = DataBaseManager.getInstance(project);
+        this.queryRunner = new QueryRunner();
+    }
+
+    /**
+     * 获取数据库连接
+     */
+    protected Connection getConnection() throws SQLException {
+        return h2Manager.getConnection();
+    }
 
 }

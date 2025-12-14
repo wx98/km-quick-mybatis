@@ -2,14 +2,27 @@ package cn.wx1998.kmerit.intellij.plugins.quickmybatis.services;
 
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginSettings;
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.ProjectFileUtils;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.ProjectFileIndex;
-import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiBinaryExpression;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiClassObjectAccessExpression;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiExpression;
+import com.intellij.psi.PsiField;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiJavaFile;
+import com.intellij.psi.PsiLiteralExpression;
+import com.intellij.psi.PsiLocalVariable;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiMethodCallExpression;
+import com.intellij.psi.PsiModifier;
+import com.intellij.psi.PsiPolyadicExpression;
+import com.intellij.psi.PsiReferenceExpression;
+import com.intellij.psi.PsiType;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
 import com.intellij.ui.classFilter.ClassFilter;
 import org.jetbrains.annotations.NonNls;
@@ -165,6 +178,41 @@ public class JavaService implements Serializable {
         }
     }
 
+    /**
+     * 替换方法调用文本中的第一个参数为计算后的值
+     * 示例：sqlSession.selectOne(NAMESPACE + ".queryById", params) → sqlSession.selectOne("com.xxx.UserMapper.queryById", params)
+     *
+     * @param originalText  原始方法调用文本
+     * @param methodName    方法名（如 selectOne）
+     * @param newFirstParam 计算后的第一个参数值
+     * @return 替换后的文本
+     */
+    public static String replaceFirstParam(String originalText, String methodName, String newFirstParam) {
+        if (methodName == null || newFirstParam == null) {
+            return originalText;
+        }
+
+        // 找到第一个 '(' 的位置（方法名后紧跟的括号）
+        int openBraceIndex = originalText.indexOf('(', originalText.indexOf(methodName));
+        if (openBraceIndex == -1) {
+            return originalText;
+        }
+
+        // 找到第一个 ',' 或 ')' 的位置（第一个参数的结束位置）
+        int firstParamEndIndex = originalText.indexOf(',', openBraceIndex);
+        if (firstParamEndIndex == -1) {
+            firstParamEndIndex = originalText.indexOf(')', openBraceIndex);
+        }
+        if (firstParamEndIndex == -1) {
+            return originalText;
+        }
+
+        // 替换第一个参数（用双引号包裹计算后的值，保持语法一致）
+        String prefix = originalText.substring(0, openBraceIndex + 1).trim();
+        String suffix = originalText.substring(firstParamEndIndex).trim();
+        return String.format("%s\"%s\"%s", prefix, newFirstParam, suffix);
+    }
+
     public Project getProject() {
         return project;
     }
@@ -175,45 +223,18 @@ public class JavaService implements Serializable {
     public List<PsiJavaFile> getAllJavaFiles() {
         LOG.debug("Finding all Java files in project");
         return ReadAction.compute(() -> {
-            List<PsiJavaFile> mybatisFiles = new ArrayList<>();
-            for (VirtualFile contentRoot : ProjectRootManager.getInstance(project).getContentSourceRoots()) {
-                if (contentRoot != null && contentRoot.isDirectory() && contentRoot.isValid()) {
-                    findJavaFilesRecursively(contentRoot, mybatisFiles);
+            List<PsiFile> filesByTypeInSourceRoots = ProjectFileUtils.getVirtualFileListByTypeInSourceRoots(project, "java");
+            List<PsiJavaFile> psiJavaFiles = new ArrayList<>();
+            for (PsiFile file : filesByTypeInSourceRoots) {
+                if (file instanceof PsiJavaFile psiJavaFile) {
+                    psiJavaFiles.add(psiJavaFile);
+                    LOG.debug("Found Java file: " + file.getVirtualFile().getPath());
                 }
             }
-            LOG.debug("Total Java files found: " + mybatisFiles.size());
-            return mybatisFiles;
+            LOG.debug("Total Java files found: " + psiJavaFiles.size());
+            return psiJavaFiles;
         });
     }
-
-    /**
-     * 递归查找 Java 文件
-     */
-    private void findJavaFilesRecursively(VirtualFile directory, List<PsiJavaFile> result) {
-        if (directory == null || !directory.isDirectory() || !directory.isValid()) return;
-
-        for (VirtualFile file : directory.getChildren()) {
-            if (file.isDirectory()) {
-                findJavaFilesRecursively(file, result);
-            } else if (file.getName().toLowerCase().endsWith(".java")) {
-                PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
-                ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
-                if (fileIndex.isExcluded(file)) {
-                    LOG.debug("忽略被排除的文件: " + file.getPath());
-                    continue;
-                }
-                if (!fileIndex.isInSourceContent(file)) {
-                    LOG.debug("忽略非源码目录文件: " + file.getPath());
-                    continue;
-                }
-                if (psiFile instanceof PsiJavaFile) {
-                    result.add((PsiJavaFile) psiFile);
-                    LOG.debug("Found Java file: " + file.getPath());
-                }
-            }
-        }
-    }
-
 
     /**
      * 判断方法是否是 SqlSession 的方法
@@ -262,40 +283,5 @@ public class JavaService implements Serializable {
             }
         }
         return false;
-    }
-
-    /**
-     * 替换方法调用文本中的第一个参数为计算后的值
-     * 示例：sqlSession.selectOne(NAMESPACE + ".queryById", params) → sqlSession.selectOne("com.xxx.UserMapper.queryById", params)
-     *
-     * @param originalText  原始方法调用文本
-     * @param methodName    方法名（如 selectOne）
-     * @param newFirstParam 计算后的第一个参数值
-     * @return 替换后的文本
-     */
-    public static String replaceFirstParam(String originalText, String methodName, String newFirstParam) {
-        if (methodName == null || newFirstParam == null) {
-            return originalText;
-        }
-
-        // 找到第一个 '(' 的位置（方法名后紧跟的括号）
-        int openBraceIndex = originalText.indexOf('(', originalText.indexOf(methodName));
-        if (openBraceIndex == -1) {
-            return originalText;
-        }
-
-        // 找到第一个 ',' 或 ')' 的位置（第一个参数的结束位置）
-        int firstParamEndIndex = originalText.indexOf(',', openBraceIndex);
-        if (firstParamEndIndex == -1) {
-            firstParamEndIndex = originalText.indexOf(')', openBraceIndex);
-        }
-        if (firstParamEndIndex == -1) {
-            return originalText;
-        }
-
-        // 替换第一个参数（用双引号包裹计算后的值，保持语法一致）
-        String prefix = originalText.substring(0, openBraceIndex + 1).trim();
-        String suffix = originalText.substring(firstParamEndIndex).trim();
-        return String.format("%s\"%s\"%s", prefix, newFirstParam, suffix);
     }
 }
