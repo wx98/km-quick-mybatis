@@ -55,8 +55,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -215,7 +217,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 }
 
                 // 计算当前文件摘要
-                String newDigest = myBatisCache.calculateFileDigest(filePath);
+                String newDigest = ProjectFileUtils.calculateFileDigest(filePath);
                 if (!newDigest.equals(oldDigest)) {
                     // 摘要不一致，文件已修改
                     LOG.info(CACHE_LOG_PREFIX + "文件内容变更: " + filePath + "（旧摘要: " + oldDigest + ", 新摘要: " + newDigest + "）");
@@ -230,7 +232,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         for (String filePath : filePathList) {
             LOG.debug(CACHE_LOG_PREFIX + "发现 " + filePathList.size() + " 个新增文件");
             clearFileCache(filePath);
-            String newDigest = myBatisCache.calculateFileDigest(filePath);
+            String newDigest = ProjectFileUtils.calculateFileDigest(filePath);
             VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
             if (file != null) {
                 newCount++;
@@ -274,12 +276,14 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     // 重新解析XML文件
                     MyBatisXmlParser parser = MyBatisXmlParserFactory.getRecommendedParser(project);
                     MyBatisXmlParser.MyBatisParseResult parse = parser.parse(xmlFile);
-                    syncToCacheManager(parse);
+                    List<XmlElementInfo> xmlElementInfos = syncToCacheManager(parse);
+                    myBatisCache.addXmlElementMapping(xmlElementInfos);
                 } else if (psiFile instanceof PsiJavaFile psiJavaFile) {
                     // 重新解析Java文件
                     JavaParser parser = JavaParserFactory.getRecommendedParser(project);
                     JavaParser.JavaParseResult parse = parser.parseEverything(psiJavaFile);
-                    syncToCacheManager(parse);
+                    List<JavaElementInfo> javaElementInfos = syncToCacheManager(parse);
+                    myBatisCache.addJavaElementMapping(javaElementInfos);
                 }
             });
         } catch (IndexNotReadyException e) {
@@ -510,6 +514,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         int size = myBatisXmlFiles.size();
         double step = proportion / (size + 1);
         // 遍历所有 MyBatisXml
+        List<XmlElementInfo> xmlElementInfos = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             XmlFile xmlFile = myBatisXmlFiles.get(i);
             // 获取当前文件的绝对路径
@@ -525,13 +530,16 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             MyBatisXmlParser.MyBatisParseResult parse = parser.parse(xmlFile);
             //更新缓存
             LOG.debug("MyBatis XML文件解析完成: " + filePath);
-            syncToCacheManager(parse);
+            List<XmlElementInfo> tmp = syncToCacheManager(parse);
+            xmlElementInfos.addAll(tmp);
             LOG.debug("MyBatis XML同步到缓存完成: " + filePath);
             // 更新进度
             progress[0] += step;
             // 设置进度
             indicator.setFraction(progress[0]);
         }
+        indicator.setText("正在保存" + xmlElementInfos.size() + "个 Xml缓存...");
+        myBatisCache.addXmlElementMapping(xmlElementInfos);
     }
 
     /**
@@ -548,6 +556,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         int size = javaFiles.size();
         double step = proportion / (size + 1);
         // 获取所有映射的Java文件路径
+        List<JavaElementInfo> javaElementInfosAll = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             PsiJavaFile psiJavaFile = javaFiles.get(i);
             // 获取当前文件的绝对路径
@@ -562,13 +571,16 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             JavaParser.JavaParseResult parse = parser.parse(psiJavaFile);
             //更新缓存
             LOG.debug("Java 文件解析完成: " + filePath);
-            syncToCacheManager(parse);
+            List<JavaElementInfo> tmp = syncToCacheManager(parse);
+            javaElementInfosAll.addAll(tmp);
             LOG.debug("Java 同步到缓存完成: " + filePath);
             // 更新进度
             progress[0] += step;
             // 设置进度
             indicator.setFraction(progress[0]);
         }
+        indicator.setText("正在保存" + javaElementInfosAll.size() + "个 Java缓存...");
+        myBatisCache.addJavaElementMapping(javaElementInfosAll);
     }
 
 
@@ -582,11 +594,12 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      */
     public void processAllJavaMyBatisMethodCall(@NotNull ProgressIndicator indicator, double proportion, double[] progress) {
         ReadAction.run(() -> {
-            doActualSearch(indicator, proportion, progress);
+            List<JavaElementInfo> javaElementInfos = doActualSearch(indicator, proportion, progress);
+            myBatisCache.addJavaElementMapping(javaElementInfos);
         });
     }
 
-    private void doActualSearch(ProgressIndicator indicator, double proportion, double[] progress) {
+    private List<JavaElementInfo> doActualSearch(ProgressIndicator indicator, double proportion, double[] progress) {
         indicator.setText("正在搜索MyBatis方法调用...");
         indicator.setText2("准备搜索...");
 
@@ -597,18 +610,23 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             indicator.setText("未找到任何目标方法，跳过搜索。");
             progress[0] += proportion;
             indicator.setFraction(progress[0]);
-            return;
+            return Collections.emptyList();
         }
 
+        int size = targetMethods.size();
+
         // 计算每个方法的进度步长
-        double step = proportion / targetMethods.size();
+        double step = proportion / size;
 
         List<JavaElementInfo> javaElementInfoList = new ArrayList<>();
 
         // 这里假设该方法已经在一个后台任务中被调用
+        int index = 0;
         for (PsiMethod targetMethod : targetMethods) {
+            index++;
             // 更新进度信息
-            indicator.setText2(String.format("正在搜索方法: %s", targetMethod.getName()));
+            String showText = "(" + size + "/" + index + ")" + Objects.requireNonNull(targetMethod.getContainingClass()).getQualifiedName() + "." + targetMethod.getName();
+            indicator.setText2(String.format("正在搜索方法: %s", showText));
 
             // 搜索项目中所有对该方法的调用
             Query<PsiReference> query = MethodReferencesSearch.search(targetMethod, GlobalSearchScope.allScope(project), true);
@@ -646,14 +664,13 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 }
 
             });
-
-            myBatisCache.addJavaElementMapping(javaElementInfoList);
             // 更新进度
             progress[0] += step;
             indicator.setFraction(progress[0]);
         }
 
         indicator.setText("MyBatis方法调用搜索完成。");
+        return javaElementInfoList;
     }
 
 
@@ -699,11 +716,11 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     /**
      * 同步解析结果到缓存管理器
      */
-    private void syncToCacheManager(MyBatisXmlParser.MyBatisParseResult result) {
-        if (result == null) return;
+    private List<XmlElementInfo> syncToCacheManager(MyBatisXmlParser.MyBatisParseResult result) {
+        if (result == null) return Collections.emptyList();
 
         // 检查是否有id属性
-        ReadAction.run(() -> {
+        return ReadAction.compute(() -> {
 
             String namespaceName = result.getNamespaceName();
             XmlTag rootTag = result.getNamespace();
@@ -729,18 +746,18 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 }
             }
 
-            myBatisCache.addXmlElementMapping(xmlElementInfoList);
+            return xmlElementInfoList;
         });
     }
 
     /**
      * 同步解析结果到缓存管理器
      */
-    private void syncToCacheManager(JavaParser.JavaParseResult result) {
-        if (result == null) return;
+    private List<JavaElementInfo> syncToCacheManager(JavaParser.JavaParseResult result) {
+        if (result == null) return Collections.emptyList();
 
         // 检查是否有id属性
-        ReadAction.run(() -> {
+        return ReadAction.compute(() -> {
 
             List<JavaElementInfo> javaElementInfoList = new ArrayList<>();
 
@@ -795,7 +812,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     }
                 });
             });
-            myBatisCache.addJavaElementMapping(javaElementInfoList);
+            return javaElementInfoList;
         });
     }
 

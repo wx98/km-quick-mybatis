@@ -7,6 +7,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,21 +60,28 @@ public class FileDigestDao extends BaseDao {
         if (digestMap.isEmpty()) {
             return 0;
         }
-        String sql = "INSERT IGNORE INTO file_digest (file_path, digest) VALUES (?, ?) ON DUPLICATE KEY UPDATE digest = VALUES(digest) ";
-
+        List<Map.Entry<String, String>> validEntries = new ArrayList<>();
+        for (Map.Entry<String, String> entry : digestMap.entrySet()) {
+            String filePath = entry.getKey();
+            String digest = entry.getValue();
+            if (filePath == null || filePath.trim().isEmpty() || digest == null || digest.trim().isEmpty()) {
+                continue;
+            }
+            validEntries.add(entry);
+        }
+        if (validEntries.isEmpty()) {
+            return 0;
+        }
+        String sql = "INSERT IGNORE INTO file_digest (file_path, digest) VALUES (?, ?) ON DUPLICATE KEY UPDATE digest = VALUES(digest)";
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
-            Object[][] params = digestMap.entrySet().stream().peek(entry -> {
-                String filePath = entry.getKey();
-                String digest = entry.getValue();
-                if (filePath == null || filePath.trim().isEmpty() || digest == null || digest.trim().isEmpty()) {
-                    throw new IllegalArgumentException("存在空的文件路径或摘要码，无法批量插入");
-                }
-            }).map(entry -> new Object[]{entry.getKey(), entry.getValue()}).toArray(Object[][]::new);
+            Object[][] params = validEntries.stream().map(entry -> new Object[]{entry.getKey(), entry.getValue()}).toArray(Object[][]::new);
             int[] batch = queryRunner.batch(conn, sql, params);
             conn.commit();
             conn.setAutoCommit(true);
-            return batch == null ? 0 : batch.length;
+            int affectedRows = 0;
+            if (batch != null) for (int count : batch) affectedRows += count;
+            return affectedRows;
         } catch (SQLException e) {
             throw new RuntimeException("批量插入文件摘要码失败", e);
         }
@@ -105,38 +113,28 @@ public class FileDigestDao extends BaseDao {
         if (digestMap.isEmpty()) {
             return;
         }
+        // 提前校验
+        List<Map.Entry<String, String>> validEntries = new ArrayList<>();
+        for (Map.Entry<String, String> entry : digestMap.entrySet()) {
+            String filePath = entry.getKey();
+            String digest = entry.getValue();
+            if (filePath == null || filePath.trim().isEmpty() || digest == null || digest.trim().isEmpty()) {
+                continue;
+            }
+            validEntries.add(entry);
+        }
+        if (validEntries.isEmpty()) {
+            return;
+        }
         String sql = "UPDATE file_digest SET digest = ? WHERE file_path = ?";
-
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
-            Object[][] params = digestMap.entrySet().stream().peek(entry -> {
-                String filePath = entry.getKey();
-                String digest = entry.getValue();
-                if (filePath == null || filePath.trim().isEmpty() || digest == null || digest.trim().isEmpty()) {
-                    throw new IllegalArgumentException("存在空的文件路径或摘要码，无法批量更新");
-                }
-            }).map(entry -> new Object[]{entry.getValue(), entry.getKey()}).toArray(Object[][]::new);
+            Object[][] params = validEntries.stream().map(entry -> new Object[]{entry.getValue(), entry.getKey()}).toArray(Object[][]::new);
             queryRunner.batch(conn, sql, params);
             conn.commit();
             conn.setAutoCommit(true);
         } catch (SQLException e) {
             throw new RuntimeException("批量更新文件摘要码失败", e);
-        }
-    }
-
-    /**
-     * 新增：UPSERT 操作（存在则更新，不存在则插入）
-     */
-    public void upsert(String filePath, String digest) {
-        if (filePath == null || filePath.trim().isEmpty() || digest == null || digest.trim().isEmpty()) {
-            throw new IllegalArgumentException("文件路径和摘要码不能为空");
-        }
-        String sql = "MERGE INTO file_digest (file_path, digest) VALUES (?, ?)  WHEN MATCHED THEN UPDATE SET digest = ? WHEN NOT MATCHED THEN INSERT (file_path, digest) VALUES (?, ?)";
-
-        try (Connection conn = getConnection()) {
-            queryRunner.update(conn, sql, filePath, digest, digest, filePath, digest);
-        } catch (SQLException e) {
-            throw new RuntimeException("UPSERT 文件摘要码失败（文件路径：" + filePath + "）", e);
         }
     }
 

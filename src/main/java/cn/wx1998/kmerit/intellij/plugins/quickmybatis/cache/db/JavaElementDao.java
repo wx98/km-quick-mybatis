@@ -40,7 +40,7 @@ public class JavaElementDao extends BaseDao {
         if (elements.isEmpty()) {
             return 0;
         }
-        String sql = "INSERT INTO element_java (sql_id, file_path, element_type, start_offset, end_offset) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE start_offset = VALUES(start_offset), end_offset = VALUES(end_offset) ";
+        String sql = "INSERT INTO element_java (sql_id, file_path, element_type, start_offset, end_offset) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE  end_offset = VALUES(end_offset) ";
 
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
