@@ -1,6 +1,10 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser;
 
-import com.intellij.psi.*;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiField;
+import com.intellij.psi.PsiJavaFile;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiMethodCallExpression;
 
 import java.util.List;
 import java.util.Map;

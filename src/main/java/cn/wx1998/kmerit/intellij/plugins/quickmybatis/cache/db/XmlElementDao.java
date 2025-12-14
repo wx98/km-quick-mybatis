@@ -40,7 +40,7 @@ public class XmlElementDao extends BaseDao {
         if (elements.isEmpty()) {
             return 0;
         }
-        String sql = "INSERT IGNORE INTO element_xml (sql_id, file_path, tag_name, database_id, start_offset, end_offset) VALUES (?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO element_xml (sql_id, file_path, tag_name, database_id, start_offset, end_offset) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE start_offset = VALUES(start_offset), end_offset = VALUES(end_offset) ";
 
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
@@ -150,13 +150,13 @@ public class XmlElementDao extends BaseDao {
     /**
      * 根据文件路径删除所有关联的XML元素记录
      */
-    public void deleteByFilePath(@NotNull String xmlFilePath) {
+    public int deleteByFilePath(@NotNull String xmlFilePath) {
         if (xmlFilePath.trim().isEmpty()) {
             throw new IllegalArgumentException("XML文件路径不能为空");
         }
         String sql = "DELETE FROM element_xml WHERE file_path = ?";
         try (Connection conn = getConnection()) {
-            queryRunner.update(conn, sql, xmlFilePath);
+            return queryRunner.update(conn, sql, xmlFilePath);
         } catch (SQLException e) {
             throw new RuntimeException("删除XML文件[" + xmlFilePath + "]关联的缓存记录失败", e);
         }

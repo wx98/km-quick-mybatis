@@ -11,7 +11,11 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -47,6 +51,14 @@ public class DataBaseManager {
      * H2表存在性查询SQL
      */
     private static final String CHECK_TABLE_EXIST_SQL = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ? AND TABLE_SCHEMA = SCHEMA()";
+
+    static {
+        // 表结构SQL文件映射初始化
+        TABLE_SQL_FILE_MAP.put("element_java", "sql/element_java.sql");
+        TABLE_SQL_FILE_MAP.put("element_xml", "sql/element_xml.sql");
+        TABLE_SQL_FILE_MAP.put("file_digest", "sql/file_digest.sql");
+    }
+
     /**
      * 项目实例
      */
@@ -56,20 +68,13 @@ public class DataBaseManager {
      */
     private HikariDataSource dataSource;
 
-    static {
-        // 表结构SQL文件映射初始化
-        TABLE_SQL_FILE_MAP.put("element_java", "sql/element_java.sql");
-        TABLE_SQL_FILE_MAP.put("element_xml", "sql/element_xml.sql");
-        TABLE_SQL_FILE_MAP.put("file_digest", "sql/file_digest.sql");
+    public DataBaseManager(Project project) {
+        this.project = project;
+        initH2DataSource();
     }
 
     public static DataBaseManager getInstance(@NotNull Project project) {
         return project.getService(DataBaseManager.class);
-    }
-
-    public DataBaseManager(Project project) {
-        this.project = project;
-        initH2DataSource();
     }
 
     /**

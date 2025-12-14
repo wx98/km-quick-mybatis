@@ -131,25 +131,17 @@ public class NotificationUtil {
     @State(name = "kmQuickMybatisNotificationSettingsState", storages = @Storage("km-quick-mybatis-notification.xml"))
     public static class NotificationSettings implements PersistentStateComponent<NotificationSettings.State> {
 
-        /**
-         * 状态存储类：用 Map 按 NotificationKey 存储不再建议状态
-         */
-        public static class State {
-            // key: NotificationKey, value: 是否不再显示
-            public Map<String, Boolean> doNotShowAgainMap = new HashMap<>();
-        }
-
         private State state = new State();
-
-        public static NotificationSettings getInstance(@NotNull Project project) {
-            Objects.requireNonNull(project, "Project cannot be null");
-            return project.getService(NotificationSettings.class);
-        }
 
         /**
          * 无参构造函数（IDE 服务必须，用于自动实例化）
          */
         public NotificationSettings() {
+        }
+
+        public static NotificationSettings getInstance(@NotNull Project project) {
+            Objects.requireNonNull(project, "Project cannot be null");
+            return project.getService(NotificationSettings.class);
         }
 
         @Nullable
@@ -197,6 +189,14 @@ public class NotificationUtil {
          */
         public void resetAllDoNotShowAgain() {
             state.doNotShowAgainMap.clear();
+        }
+
+        /**
+         * 状态存储类：用 Map 按 NotificationKey 存储不再建议状态
+         */
+        public static class State {
+            // key: NotificationKey, value: 是否不再显示
+            public Map<String, Boolean> doNotShowAgainMap = new HashMap<>();
         }
     }
 }

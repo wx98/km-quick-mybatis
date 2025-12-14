@@ -1,7 +1,6 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.db;
 
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.JavaElementInfo;
-import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
 import com.intellij.openapi.project.Project;
 import org.apache.commons.dbutils.handlers.BeanListHandler;
 import org.apache.commons.dbutils.handlers.ColumnListHandler;
@@ -41,7 +40,7 @@ public class JavaElementDao extends BaseDao {
         if (elements.isEmpty()) {
             return 0;
         }
-        String sql = "INSERT IGNORE INTO element_java (sql_id, file_path, element_type, start_offset, end_offset) VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO element_java (sql_id, file_path, element_type, start_offset, end_offset) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE start_offset = VALUES(start_offset), end_offset = VALUES(end_offset) ";
 
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
@@ -149,13 +148,13 @@ public class JavaElementDao extends BaseDao {
     /**
      * 根据文件路径删除所有关联的Java元素记录
      */
-    public void deleteByFilePath(@NotNull String javaFilePath) {
+    public int deleteByFilePath(@NotNull String javaFilePath) {
         if (javaFilePath.trim().isEmpty()) {
             throw new IllegalArgumentException("Java文件路径不能为空");
         }
         String sql = "DELETE FROM element_java WHERE file_path = ?";
         try (Connection conn = getConnection()) {
-            queryRunner.update(conn, sql, javaFilePath);
+            return queryRunner.update(conn, sql, javaFilePath);
         } catch (SQLException e) {
             throw new RuntimeException("删除Java文件[" + javaFilePath + "]关联的缓存记录失败", e);
         }

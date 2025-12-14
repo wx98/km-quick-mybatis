@@ -9,7 +9,11 @@ import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 可以在此处做一些对缓存的操作
@@ -81,11 +85,11 @@ public class CacheDao extends BaseDao {
     }
 
     public int clearJavaFileCache(String javaFilePath) {
-        return javaElementDao.deleteBySqlId(javaFilePath);
+        return javaElementDao.deleteByFilePath(javaFilePath);
     }
 
     public int clearXmlFileCache(String xmlFilePath) {
-        return xmlElementDao.deleteBySqlId(xmlFilePath);
+        return xmlElementDao.deleteByFilePath(xmlFilePath);
     }
 
     public int clearAll() {
