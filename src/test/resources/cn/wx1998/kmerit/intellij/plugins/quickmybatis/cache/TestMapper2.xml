@@ -30,7 +30,7 @@
         SELECT id, name, price, description, category_id, created_time, updated_time
         FROM products
         ORDER BY id ASC
-            LIMIT #{offset}, #{limit}
+        LIMIT #{offset}, #{limit}
     </select>
 
     <!-- 结果映射 -->
