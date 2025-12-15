@@ -5,7 +5,6 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
-import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.psi.PsiModifier;
 import com.intellij.psi.PsiParameter;
 import com.intellij.psi.PsiParameterList;
@@ -13,7 +12,6 @@ import com.intellij.psi.PsiType;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiShortNamesCache;
 import com.intellij.ui.classFilter.ClassFilter;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -24,27 +22,19 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class TargetMethodsHolder {
     private final Project project;
-    private final Set<PsiMethod> targetMethods;
 
     public TargetMethodsHolder(Project project) {
         this.project = project;
-        // 修正 #1: 使用标准 JDK 创建线程安全的 Set
-        this.targetMethods = Collections.newSetFromMap(new ConcurrentHashMap<>());
-        reloadTargetMethods();
     }
 
     /**
      * 根据配置重新加载目标方法
      */
-    public void reloadTargetMethods() {
-
-        ReadAction.run(() -> {
-
+    public Set<PsiMethod> reloadTargetMethods() {
+        Set<PsiMethod> targetMethods = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        return ReadAction.compute(() -> {
             targetMethods.clear();
-
             MyPluginSettings settings = MyPluginSettings.getInstance();
-            // 修正 #2: 使用你自己的配置获取方式
-            // 假设 getClassNamesToMonitor() 返回一个 List<String>，包含 "org.apache.ibatis.session.SqlSession" 等
             ClassFilter[] classFilters = settings.getClassFilters();
             List<String> classNamesToMonitor = new ArrayList<>();
             for (ClassFilter classFilter : classFilters) {
@@ -87,22 +77,8 @@ public class TargetMethodsHolder {
                     }
                 }
             }
+            return targetMethods;
         });
 
-    }
-
-    /**
-     * 判断一个方法调用表达式是否是对目标方法的调用
-     */
-    public boolean isTargetMethodCall(@NotNull PsiMethodCallExpression callExpr) {
-        PsiMethod resolvedMethod = callExpr.resolveMethod();
-        return resolvedMethod != null && targetMethods.contains(resolvedMethod);
-    }
-
-    /**
-     * 获取所有目标方法
-     */
-    public Set<PsiMethod> getTargetMethods() {
-        return Collections.unmodifiableSet(targetMethods);
     }
 }
