@@ -611,7 +611,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         indicator.setText2("准备搜索...");
 
         TargetMethodsHolder targetHolder = new TargetMethodsHolder(project);
-        Set<PsiMethod> targetMethods = targetHolder.getTargetMethods();
+        Set<PsiMethod> targetMethods = targetHolder.reloadTargetMethods();
 
         if (targetMethods.isEmpty()) {
             indicator.setText("未找到任何目标方法，跳过搜索。");
