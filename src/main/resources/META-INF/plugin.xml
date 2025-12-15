@@ -1,7 +1,7 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
     <!-- 插件id -->
-    <id>com.github.wx98.kmerit.jetbrains.plugins.quickmybatis</id>
+    <id>cn.wx1998.kmerit.jetbrains.plugins.quickmybatis</id>
     <!-- 插件名称 -->
     <name>Km-Quick-Mybatis</name>
     <!-- 作者 -->
@@ -16,14 +16,14 @@
     <applicationListeners>
         <listener
                 topic="com.intellij.openapi.application.ApplicationActivationListener"
-                class="cn.wx1998.kmerit.intellij.plugins.quickmybatis.listeners.MyApplicationActivationListener"
+                class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.listeners.MyApplicationActivationListener"
         />
     </applicationListeners>
     <!-- Action -->
     <actions>
         <!-- 注册刷新动作 -->
         <action id="QuickMyBatis.RefreshCache"
-                class="cn.wx1998.kmerit.intellij.plugins.quickmybatis.actions.RefreshMyBatisCacheAction"
+                class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions.RefreshMyBatisCacheAction"
                 text="刷新MyBatis缓存"
                 description="刷新所有MyBatis相关缓存">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
@@ -33,70 +33,70 @@
     <!-- 扩展点 -->
     <extensions defaultExtensionNs="com.intellij">
         <projectService
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.JavaService"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.services.JavaService"
+                serviceImplementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.services.JavaService"
         />
         <projectService
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.services.XmlService"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.services.XmlService"
+                serviceImplementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.services.XmlService"
         />
         <projectService
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil$NotificationSettings"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil$NotificationSettings"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.NotificationUtil$NotificationSettings"
+                serviceImplementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.NotificationUtil$NotificationSettings"
         />
         <projectService
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.DataBaseManager"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.DataBaseManager"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.DataBaseManager"
+                serviceImplementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.DataBaseManager"
         />
 
         <!-- java 跳转到 xml   -->
         <codeInsight.lineMarkerProvider
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.JavaLineMarkerProvider"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.provider.JavaLineMarkerProvider"
                 language="JAVA"
-                implementationClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.JavaLineMarkerProvider"
+                implementationClass="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.provider.JavaLineMarkerProvider"
         />
         <!-- xml 跳转到 java -->
         <codeInsight.lineMarkerProvider
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.XmlLineMarkerProvider"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.provider.XmlLineMarkerProvider"
                 language="XML"
-                implementationClass="cn.wx1998.kmerit.intellij.plugins.quickmybatis.provider.XmlLineMarkerProvider"
+                implementationClass="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.provider.XmlLineMarkerProvider"
         />
         <!-- 插件的配置 -->
         <applicationService
                 id="cn.wx1998.MyPluginSettings"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginSettings"
+                serviceImplementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.setting.MyPluginSettings"
         />
         <!-- 插件配置 -->
         <applicationConfigurable
                 id="cn.wx1998.MyPluginConfigurable"
                 displayName="Km-Quick-Mybatis"
                 parentId="tools"
-                instance="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyPluginConfigurable"
+                instance="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.setting.MyPluginConfigurable"
         />
         <!-- 缓存管理器服务 -->
         <projectService
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
+                serviceImplementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheManagerDefault"
         />
         <!-- 插件配置类 -->
         <projectService
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting"
-                serviceImplementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.setting.MyBatisSetting"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.setting.MyBatisSetting"
+                serviceImplementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.setting.MyBatisSetting"
         />
         <!-- 项目启动时触发 -->
         <postStartupActivity
-                implementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCacheStartupLoader"/>
+                implementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.persistent.MyBatisCacheStartupLoader"/>
 
         <!-- 项目关闭时触发 -->
         <projectCloseHandler
-                implementation="cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.persistent.MyBatisCacheCloseSaver"/>
+                implementation="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.persistent.MyBatisCacheCloseSaver"/>
 
         <!-- 插件通知组-->
         <notificationGroup
                 displayType="BALLOON"
-                id="cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil"
+                id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.NotificationUtil"
                 isLogByDefault="true"
                 bundle="messages.MyBundle"
-                key="notification.group.cn.wx1998.kmerit.intellij.plugins.quickmybatis.util.NotificationUtil"/>
+                key="notification.group.cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.NotificationUtil"/>
     </extensions>
 </idea-plugin>

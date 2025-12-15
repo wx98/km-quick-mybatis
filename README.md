@@ -1,8 +1,8 @@
 # km-quick-mybatis
 
 ![Build](https://github.com/wx98/km-quick-mybatis/workflows/Build/badge.svg)
-[![Version](https://img.shields.io/jetbrains/plugin/v/28263-km-quick-mybatis.svg)](https://plugins.jetbrains.com/plugin/28263-km-quick-mybatis)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/28263-km-quick-mybatis.svg)](https://plugins.jetbrains.com/plugin/28263-km-quick-mybatis)
+[![Version](https://img.shields.io/jetbrains/plugin/v/29383-km-quick-mybatis.svg)](https://plugins.jetbrains.com/plugin/29383-km-quick-mybatis)
+[![Downloads](https://img.shields.io/jetbrains/plugin/d/29383-km-quick-mybatis.svg)](https://plugins.jetbrains.com/plugin/29383-km-quick-mybatis)
 
 <!-- Plugin description -->
 
@@ -23,10 +23,10 @@
 
 - Using JetBrains Marketplace:
 
-  Go to [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/28263-km-quick-mybatis) and install it by clicking
+  Go to [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/29383-km-quick-mybatis) and install it by clicking
   the <kbd>Install to ...</kbd> button in case your IDE is running.
 
-  You can also download the [latest release](https://plugins.jetbrains.com/plugin/28263-km-quick-mybatis/versions) from
+  You can also download the [latest release](https://plugins.jetbrains.com/plugin/29383-km-quick-mybatis/versions) from
   JetBrains Marketplace and install it manually using
   <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
 

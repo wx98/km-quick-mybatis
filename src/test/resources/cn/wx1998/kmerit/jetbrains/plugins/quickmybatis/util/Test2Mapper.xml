@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.Test1Mapper">
+
+    <select id="selectNameTest1" databaseId="oracle">
+        select 1
+        from dual
+    </select>
+
+    <select id="selectNameTest1" databaseId="mysql">
+        select 1
+        from dual
+    </select>
+
+    <select id="selectAll">
+        select 1
+        from dual
+    </select>
+
+    <insert id="add">
+        select 1
+        from dual
+    </insert>
+
+    <select id="queryById">
+        select 1
+        from dual
+    </select>
+
+    <delete id="delete" databaseId="oracle">
+        select 1
+        from dual
+    </delete>
+
+    <delete id="delete" databaseId="mysql">
+        select 1
+        from dual
+    </delete>
+
+    <delete id="deleteAll">
+        select 1
+        from dual
+    </delete>
+
+</mapper>
