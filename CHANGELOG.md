@@ -10,6 +10,6 @@
 
 - 开发版本，一切开始的地方
 
-[Unreleased]: https://github.com/wx98/km-quick-mybatis/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/wx98/km-quick-mybatis/compare/0.0.1...HEAD
 
-[0.0.1]: https://github.com/wx98/km-quick-mybatis/commits/v0.0.1
+[0.0.1]: https://github.com/wx98/km-quick-mybatis/commits/0.0.1
