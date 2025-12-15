@@ -1,16 +1,16 @@
 package cn.wx1998.kmerit.intellij.plugins.quickmybatis.util;
 
+import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.MyBatisCacheManagerDefault;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.cache.info.XmlElementInfo;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParser;
 import cn.wx1998.kmerit.intellij.plugins.quickmybatis.parser.MyBatisXmlParserFactory;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlTag;
 import com.intellij.testFramework.TestDataPath;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -18,7 +18,7 @@ import java.util.Map;
 @TestDataPath("$CONTENT_ROOT/src/test/resources/cn/wx1998/kmerit/intellij/plugins/quickmybatis/util/")
 public class TagLocatorTest extends BasePlatformTestCase {
 
-    private static final Logger log = LoggerFactory.getLogger(TagLocatorTest.class);
+    private static final Logger log = Logger.getInstance(MyBatisCacheManagerDefault.class);
 
     @Override
     protected String getTestDataPath() {
@@ -44,9 +44,9 @@ public class TagLocatorTest extends BasePlatformTestCase {
                 XmlTag xmlTagByInfo = TagLocator.findXmlTagByInfo(xmlElementInfo, project);
 
                 if (element.equals(xmlTagByInfo)) {
-                    log.info("success:{}", xmlElementInfo);
+                    log.info("success:" + xmlElementInfo);
                 } else {
-                    log.info("failure:{}", xmlElementInfo);
+                    log.info("failure:" + xmlElementInfo);
 
                 }
             });

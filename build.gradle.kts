@@ -54,22 +54,17 @@ repositories {
     }
 }
 
-// Disable proxy settings to bypass the connection to 127.0.0.1:33210
-//System.setProperty("http.proxyHost", "")
-//System.setProperty("http.proxyPort", "")
-//System.setProperty("https.proxyHost", "")
-//System.setProperty("https.proxyPort", "")
-//System.setProperty("http.nonProxyHosts", "*")
-
-
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
 dependencies {
     testImplementation(libs.junit)
-    compileClasspath(libs.lombok)
+    compileOnly(libs.lombok)
+    annotationProcessor(libs.lombok)
 
-    runtimeOnly(libs.h2)
+    implementation(libs.h2)
     implementation(libs.dbutils)
-    implementation(libs.hikaricp)
+    implementation(libs.hikaricp) {
+        exclude(module = "slf4j-api")
+    }
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
@@ -183,6 +178,10 @@ kover {
 }
 
 tasks {
+    buildSearchableOptions {
+        // 禁用buildSearchableOptions任务（解决Locale异常报错）
+        enabled = false
+    }
     wrapper {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
     }
@@ -192,8 +191,6 @@ tasks {
         options.encoding = "UTF-8"
     }
 
-    // 对于Kotlin，IntelliJ Platform Gradle Plugin会自动配置编码
-    // 但我们可以通过intellijPlatform扩展确保编码设置正确
     publishPlugin {
         dependsOn(patchChangelog)
     }
@@ -209,6 +206,8 @@ intellijPlatformTesting {
                         "-Dide.mac.message.dialogs.as.sheets=false",
                         "-Djb.privacy.policy.text=<!--999.999-->",
                         "-Djb.consents.confirmation.enabled=false",
+                        "-Duser.language=en",
+                        "-Duser.country=US"
                     )
                 }
             }
