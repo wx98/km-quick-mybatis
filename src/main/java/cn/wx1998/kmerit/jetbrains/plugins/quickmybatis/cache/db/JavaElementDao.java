@@ -187,6 +187,16 @@ public class JavaElementDao extends BaseDao {
         }
     }
 
+
+    public int clearAllJavaMethodCall() {
+        String sql = "delete from element_java where element_type = 'methodCall' ";
+        try (Connection conn = getConnection()) {
+            return queryRunner.update(conn, sql);
+        } catch (SQLException e) {
+            throw new RuntimeException("清空element_java表所有数据失败", e);
+        }
+    }
+
     public int countElementJavaTable() {
         String sql = "SELECT COUNT(1) AS count FROM element_java";
         try (Connection conn = getConnection()) {

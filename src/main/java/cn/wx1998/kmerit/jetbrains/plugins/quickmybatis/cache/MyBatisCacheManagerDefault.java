@@ -77,6 +77,10 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     private static final Key<MyBatisCacheManagerDefault> INSTANCE_KEY = Key.create("MyBatisCacheManager.Instance");
     // 日志实例
     private static final Logger LOG = Logger.getInstance(MyBatisCacheManagerDefault.class);
+    /**
+     * 通知标记
+     */
+    public static boolean notifyFlag = true;
     // 定时扫描线程池
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     // 项目实例
@@ -89,11 +93,6 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     private MyBatisCache myBatisCache;
     // 定时扫描间隔（5分钟，单位：毫秒）
     private long scanIntervalMs = 5 * 60 * 1000;
-
-    /**
-     * 通知标记
-     */
-    public static boolean notifyFlag = true;
 
     /**
      * 私有构造器（单例模式）
@@ -380,9 +379,9 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     }
 
     @Override
-    public void clearAllCache() {
-        myBatisCache.clearAllCache();
-        LOG.debug(CACHE_LOG_PREFIX + "清除所有缓存");
+    public void clearCache(MyBatisCacheRefreshRange cacheRefreshRange) {
+        myBatisCache.clearCache(cacheRefreshRange);
+        LOG.debug("清除" + cacheRefreshRange + "缓存");
     }
 
     @Override
@@ -450,14 +449,15 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      * 执行全局缓存刷新（带进度提示）
      */
     @Override
-    public void performFullCacheRefresh(int numberOfRefreshes) {
-        ProgressManager.getInstance().run(new Task.Backgroundable(project, "刷新插件MyBatis缓存") {
+    public void performFullCacheRefresh(MyBatisCacheRefreshRange cacheRefreshRange, int numberOfRefreshes) {
+        notifyFlag = false;
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "刷新插件 km-quick-mybatis 缓存") {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 long start = System.currentTimeMillis();
 
-                indicator.setText("正在清除旧缓存...");
-                clearAllCache();
+                indicator.setText("正在清除" + cacheRefreshRange + "旧缓存...");
+                clearCache(cacheRefreshRange);
 
                 // 设置进度条为不确定性
                 indicator.setIndeterminate(false);
@@ -467,38 +467,40 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 // 进度
                 double[] progress = {0.0};
 
-                indicator.setText("正在重新解析所有MyBatis文件...");
-                reparseAllMyBatisFiles(indicator, 0.3, progress);
-
-                indicator.setText("正在处理Java文件...");
-                processAllJavaFiles(indicator, 0.3, progress);
-
-                indicator.setText("正在扫描MyBatis方法调用...");
-                processAllJavaMyBatisMethodCall(indicator, 0.3, progress);
+                switch (cacheRefreshRange) {
+                    case ALL -> {
+                        processAllMyBatisFiles(indicator, 0.3, progress);
+                        processAllJavaFiles(indicator, 0.3, progress);
+                        processAllJavaMyBatisMethodCall(indicator, 0.3, progress);
+                    }
+                    case XML -> processAllMyBatisFiles(indicator, 1, progress);
+                    case JAVA -> processAllJavaFiles(indicator, 1, progress);
+                    case JAVA_METHOD_CALL -> processAllJavaMyBatisMethodCall(indicator, 1, progress);
+                }
 
                 indicator.setText("正在更新缓存版本...");
                 incrementCacheVersion();
 
                 indicator.setText("缓存刷新完成");
 
+                // 关闭通知标记
                 notifyFlag = true;
 
                 long end = System.currentTimeMillis();
                 long ms = (end - start);
 
                 // 通知用户缓存刷好了
-                String context0 = "ヾ(ｏ･ω･)ﾉ 太好了，缓存刷新完毕，一共花了" + TimeStrFormatter.format(ms) + " <br/>你也可以按 ctrl + alt + r 再次刷新";
-                String context1 = "⊙(・◇・)？缓存又刷新好了，这次花了" + TimeStrFormatter.format(ms) + "<br/>你也可以按 ctrl + alt + r 再次刷新";
-                String context = numberOfRefreshes > 0 ? context1 : context0;
+                String notificationKey = this.getClass().getName();
+                String title = "km-quick-mybatis";
+                String context0 = "ヾ(ｏ･ω･)ﾉ 太好了，" + cacheRefreshRange + "缓存刷新完毕，一共花了" + TimeStrFormatter.format(ms) + " <br/>你也可以按 ctrl + alt + r 再次刷新";
+                String context1 = "⊙(・◇・)？" + cacheRefreshRange + "缓存又刷新好了，这次花了" + TimeStrFormatter.format(ms) + "<br/>你也可以按 ctrl + alt + r 再次刷新";
+                String content = numberOfRefreshes > 0 ? context1 : context0;
                 String leftBtnText = "干得好!";
+                NotificationUtil.NotificationActionCallback rightCallBack = (pro, not) -> LOG.trace("什么都不做");
                 String rightBtnText = "再刷一下?";
-                NotificationUtil.showCustomNotification(project, this.getClass().getName(), "km-quick-mybatis", context, leftBtnText, (pro, not) -> {
-                    //左侧按钮什么都不敢
-                }, rightBtnText, (pro, not) -> {
-                    // 右侧按钮调用刷新按钮，并且刷新次数+1
-                    int count = (numberOfRefreshes + 1);
-                    performFullCacheRefresh(count);
-                }, false);
+                NotificationUtil.NotificationActionCallback leftCallBack = (pro, not) -> performFullCacheRefresh(cacheRefreshRange, (numberOfRefreshes + 1));
+                NotificationUtil.showCustomNotification(project, notificationKey, title, content, leftBtnText, rightCallBack, rightBtnText, leftCallBack, true);
+
             }
         });
     }
@@ -510,7 +512,8 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      * @param proportion 占用的总进度
      * @param progress   进度上限文
      */
-    private void reparseAllMyBatisFiles(ProgressIndicator indicator, double proportion, double[] progress) {
+    private void processAllMyBatisFiles(ProgressIndicator indicator, double proportion, double[] progress) {
+        indicator.setText("正在重新解析所有MyBatis文件...");
         // 解析所有XML文件
         XmlService xmlService = XmlService.getInstance(project);
         // 获取所有 MyBatisXml 文件
@@ -553,6 +556,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      * 处理所有相关Java文件
      */
     private void processAllJavaFiles(ProgressIndicator indicator, double proportion, double[] progress) {
+        indicator.setText("正在处理Java文件...");
         // 解析所有JAVA文件
         JavaService javaService = JavaService.getInstance(project);
         // 获取所有 Java 文件
@@ -600,6 +604,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      * @param progress   进度数组，用于与外部进度同步
      */
     public void processAllJavaMyBatisMethodCall(@NotNull ProgressIndicator indicator, double proportion, double[] progress) {
+        indicator.setText("正在扫描MyBatis方法调用...");
         ReadAction.run(() -> {
             List<JavaElementInfo> javaElementInfos = doActualSearch(indicator, proportion, progress);
             myBatisCache.addJavaElementMapping(javaElementInfos);
@@ -783,15 +788,17 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     javaElementInfoList.add(javaElementInfo);
                 }
             });
-            Map<String, List<PsiMethod>> allClassMethods = result.getAllClassMethods();
-            allClassMethods.forEach((key, list) -> {
-                list.forEach(classMethod -> {
-                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
-                    if (javaElementInfo != null) {
-                        javaElementInfoList.add(javaElementInfo);
-                    }
-                });
-            });
+
+            // 暂时用不到类方法的缓存，故注释此段逻辑方式缓存过大
+            // Map<String, List<PsiMethod>> allClassMethods = result.getAllClassMethods();
+            // allClassMethods.forEach((key, list) -> {
+            //     list.forEach(classMethod -> {
+            //         JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
+            //         if (javaElementInfo != null) {
+            //             javaElementInfoList.add(javaElementInfo);
+            //         }
+            //     });
+            // });
             Map<String, List<PsiMethod>> allInterfaceMethods = result.getAllInterfaceMethods();
             allInterfaceMethods.forEach((key, list) -> {
                 list.forEach(psiMethod -> {
@@ -842,28 +849,46 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 没有 methodCall 类型的数据
         boolean flag5 = countElementJavaTableByMethodCall == 0;
 
-        String showText = "检测到缓存可能失效,原因是:";
+
+        String title = "km-quick-mybatis提示";
+        String content = "检测到缓存可能失效,<br/>原因是:";
         String notificationKey = this.getClass().getSimpleName();
+        NotificationUtil.NotificationActionCallback rightCallBack = null;
+
+        MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
+
         if (flag1) {
-            showText += "【Xml缓存不为空但是Java为空】";
+            content += "【Xml缓存不为空但是Java为空】";
             notificationKey += "-flag1";
+            // 刷新 Java 缓存
+            rightCallBack = (currentProject, notification) -> cacheManager.performFullCacheRefresh(MyBatisCacheRefreshRange.JAVA, 0);
         } else if (flag2) {
-            showText += "【Java缓存不为空但是Xml为空】";
+            content += "【Java缓存不为空但是Xml为空】";
             notificationKey += "-flag2";
+            // 刷新 Xml 缓存
+            rightCallBack = (currentProject, notification) -> cacheManager.performFullCacheRefresh(MyBatisCacheRefreshRange.XML, 0);
         } else if (flag3) {
-            showText += "【Java缓存和Xml缓存都为空】";
+            content += "【Java缓存和Xml缓存都为空】";
             notificationKey += "-flag3";
+            // 刷新所有缓存
+            rightCallBack = (currentProject, notification) -> cacheManager.performFullCacheRefresh(MyBatisCacheRefreshRange.ALL, 0);
         } else if (flag4) {
-            showText += "【Java和Xml缓存都不为空但是文件摘要缓存为空】";
+            content += "【Java和Xml缓存都不为空但是文件摘要缓存为空】";
             notificationKey += "-flag4";
+            // 刷新所有缓存
+            rightCallBack = (currentProject, notification) -> cacheManager.performFullCacheRefresh(MyBatisCacheRefreshRange.ALL, 0);
         } else if (flag5) {
-            showText += "【没有Java方法调用类型的缓存】";
+            content += "【没有Java方法调用类型的缓存】";
             notificationKey += "-flag5";
+            // 刷新 Java方法调用的缓存
+            rightCallBack = (currentProject, notification) -> cacheManager.performFullCacheRefresh(MyBatisCacheRefreshRange.JAVA_METHOD_CALL, 0);
         }
+
+        NotificationUtil.NotificationActionCallback leftCallBack = (currentProject, notification) -> LOG.trace("什么都不做");
 
         if ((flag1 || flag2 || flag3 || flag4 || flag5) && notifyFlag) {
             notifyFlag = false;
-            NotificationUtil.showCacheRefreshNotification(project, notificationKey, "km-quick-mybatis提示", showText, "刷新缓存", "不再建议");
+            NotificationUtil.showCustomNotification(project, notificationKey, title, content, "刷新缓存", rightCallBack, "不再建议", leftCallBack, true);
             return true;
         } else {
             return false;
