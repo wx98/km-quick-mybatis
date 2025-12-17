@@ -551,7 +551,6 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         myBatisCache.addXmlElementMapping(xmlElementInfos);
         indicator.setFraction(Math.min(progress[0], 1.0));
 
-
     }
 
     /**
