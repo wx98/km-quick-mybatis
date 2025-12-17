@@ -91,32 +91,6 @@ public class NotificationUtil {
         notification.notify(project);
     }
 
-
-    /**
-     * 简化方法：快速显示"MyBatis缓存刷新"通知（兼容原有逻辑，支持独立控制）
-     *
-     * @param project          当前项目
-     * @param notificationKey  通知唯一标识（例如："cache.refresh.tip1"、"cache.refresh.tip2"）
-     * @param title            通知标题
-     * @param content          通知内容
-     * @param refreshBtnText   刷新按钮文本
-     * @param doNotShowBtnText 不再建议按钮文本
-     */
-    public static void showCacheRefreshNotification(@NotNull Project project, @NotNull String notificationKey, @NotNull String title, @NotNull String content, @NotNull String refreshBtnText, @NotNull String doNotShowBtnText) {
-        showCustomNotification(project, notificationKey, title, content, refreshBtnText,
-                // 左侧按钮：缓存刷新逻辑
-                (currentProject, notification) -> {
-                    if (currentProject != null) {
-                        MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
-                        cacheManager.performFullCacheRefresh(0);
-                    }
-                }, doNotShowBtnText,
-                // 右侧按钮：空逻辑
-                (currentProject, notification) -> {
-                }, true // 启用不再建议持久化
-        );
-    }
-
     /**
      * 函数式接口：通知按钮点击回调
      */

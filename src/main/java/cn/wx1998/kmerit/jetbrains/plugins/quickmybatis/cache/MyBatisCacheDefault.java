@@ -176,8 +176,13 @@ public class MyBatisCacheDefault implements MyBatisCache {
      * 清除所有缓存（用于全局刷新）
      */
     @Override
-    public int clearAllCache() {
-        return cacheDao.clearAll();
+    public int clearCache(MyBatisCacheRefreshRange cacheRefreshRange) {
+        return switch (cacheRefreshRange) {
+            case XML -> cacheDao.clearAllXmlElement();
+            case JAVA -> cacheDao.clearAllJavaElement();
+            case JAVA_METHOD_CALL -> cacheDao.clearAllJavaMethodCallElement();
+            case ALL -> cacheDao.clearAll();
+        };
     }
 
     /**

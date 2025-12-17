@@ -20,7 +20,7 @@ public class MyBatisCacheStartupLoader implements ProjectActivity {
         MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
         this.lastKnownVersion = cacheManager.getCurrentCacheVersion();
 
-        // 注册版本检查定时任务
+        // 注册缓存检查定时任务
         scheduleVersionCheck(project);
 
         return null;
@@ -39,8 +39,12 @@ public class MyBatisCacheStartupLoader implements ProjectActivity {
                     return;
                 }
                 MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
-                cacheManager.checkForCacheInvalidationAndNotify(project);
+                boolean b = cacheManager.checkForCacheInvalidationAndNotify(project);
             }
         }, 0, 5000); // 每5秒检查一次
+    }
+
+    public long getLastKnownVersion() {
+        return lastKnownVersion;
     }
 }
