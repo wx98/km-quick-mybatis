@@ -1,7 +1,10 @@
 [versions]
 # libraries
 junit = "4.13.2"
-lombok = "1.18.42"
+lombok = "1.18.34"
+h2 = "2.2.224"
+dbutils = "1.8.1"
+hikaricp = "5.0.1"
 
 # plugins
 changelog = "2.5.0"
@@ -13,8 +16,9 @@ qodana = "2025.2.4"
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 lombok = { group = "org.projectlombok", name = "lombok", version.ref = "lombok" }
-
-
+h2 = { group = "com.h2database", name = "h2", version.ref = "h2" }
+dbutils = { group = "commons-dbutils", name = "commons-dbutils", version.ref = "dbutils" }
+hikaricp = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikaricp" }
 
 [plugins]
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }

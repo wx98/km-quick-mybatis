@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.TestMapper2">
+    <!-- 简单的查询语句 -->
+    <select id="getProductById" parameterType="java.lang.Long" resultType="com.example.Product">
+        SELECT id, name, price, description, category_id, created_time, updated_time
+        FROM products
+        WHERE id = #{id}
+    </select>
+
+    <!-- 插入语句 -->
+    <insert id="addProduct" parameterType="com.example.Product">
+        INSERT INTO products (name, price, description, category_id, created_time, updated_time)
+        VALUES (#{name}, #{price}, #{description}, #{categoryId}, NOW(), NOW())
+        <selectKey resultType="java.lang.Long" keyProperty="id" order="AFTER">
+            SELECT LAST_INSERT_ID()
+        </selectKey>
+    </insert>
+
+    <!-- 条件查询 -->
+    <select id="findProductsByCategory" parameterType="java.lang.Long" resultType="com.example.Product">
+        SELECT id, name, price, description, category_id, created_time, updated_time
+        FROM products
+        WHERE category_id = #{categoryId}
+        ORDER BY name ASC
+    </select>
+
+    <!-- 分页查询 -->
+    <select id="findProductsPaged" resultType="com.example.Product">
+        SELECT id, name, price, description, category_id, created_time, updated_time
+        FROM products
+        ORDER BY id ASC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!-- 结果映射 -->
+    <resultMap id="productResultMap" type="com.example.Product">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="price" column="price"/>
+        <result property="description" column="description"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedTime" column="updated_time"/>
+    </resultMap>
+
+    <!-- SQL片段 -->
+    <sql id="productColumns">
+        id
+        , name, price, description, category_id, created_time, updated_time
+    </sql>
+
+    <!-- 使用SQL片段的复杂查询 -->
+    <select id="searchProducts" resultMap="productResultMap">
+        SELECT
+        <include refid="productColumns"/>
+        FROM products
+        WHERE 1 = 1
+        <if test="name != null and name != ''">
+            AND name LIKE CONCAT('%', #{name}, '%')
+        </if>
+        <if test="minPrice != null">
+            AND price >= #{minPrice}
+        </if>
+        <if test="maxPrice != null">
+            AND price<= #{maxPrice}
+        </if>
+        ORDER BY updated_time DESC
+    </select>
+</mapper>

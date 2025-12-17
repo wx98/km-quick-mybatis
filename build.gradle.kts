@@ -21,14 +21,33 @@ kotlin {
 
 // Configure project's dependencies
 repositories {
-     mavenLocal()
-    maven { url=uri("https://maven.aliyun.com/repository/public/") }
-    mavenCentral()
-    maven { url=uri("https://plugins.gradle.org/m2/") }
-    maven { url=uri("https://oss.sonatype.org/content/repositories/releases/") }
-    maven { url=uri("https://dl.bintray.com/jetbrains/intellij-plugin-service") }
-    maven { url=uri("https://dl.bintray.com/jetbrains/intellij-third-party-dependencies/") }
+    mavenLocal()
+    maven {
+        url = uri("https://maven.aliyun.com/repository/public/")
+        isAllowInsecureProtocol = false
+    }
+    maven {
+        url = uri("https://maven.aliyun.com/repository/jcenter/")
+        isAllowInsecureProtocol = false
+    }
+    maven {
+        url = uri("https://maven.aliyun.com/repository/google/")
+        isAllowInsecureProtocol = false
+    }
+    maven {
+        url = uri("https://maven.aliyun.com/repository/gradle-plugin/")
+        isAllowInsecureProtocol = false
+    }
 
+    mavenCentral()
+    google()
+    maven { url = uri("https://plugins.gradle.org/m2/") }
+    maven { url = uri("https://oss.sonatype.org/content/repositories/releases/") }
+    maven { url = uri("https://dl.bintray.com/jetbrains/intellij-plugin-service") }
+    maven { url = uri("https://dl.bintray.com/jetbrains/intellij-third-party-dependencies/") }
+
+    maven { url = uri("https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/releases") }
+    maven { url = uri("https://cache-redirector.jetbrains.com/www.jetbrains.com/intellij-repository/snapshots") }
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {
         defaultRepositories()
@@ -38,7 +57,14 @@ repositories {
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
 dependencies {
     testImplementation(libs.junit)
-    compileClasspath(libs.lombok)
+    compileOnly(libs.lombok)
+    annotationProcessor(libs.lombok)
+
+    implementation(libs.h2)
+    implementation(libs.dbutils)
+    implementation(libs.hikaricp) {
+        exclude(module = "slf4j-api")
+    }
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
@@ -152,8 +178,17 @@ kover {
 }
 
 tasks {
+    buildSearchableOptions {
+        // 禁用buildSearchableOptions任务（解决Locale异常报错）
+        enabled = false
+    }
     wrapper {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
+    }
+
+    // 设置Java编译任务的编码为UTF-8
+    withType<JavaCompile> {
+        options.encoding = "UTF-8"
     }
 
     publishPlugin {
@@ -171,6 +206,8 @@ intellijPlatformTesting {
                         "-Dide.mac.message.dialogs.as.sheets=false",
                         "-Djb.privacy.policy.text=<!--999.999-->",
                         "-Djb.consents.confirmation.enabled=false",
+                        "-Duser.language=en",
+                        "-Duser.country=US"
                     )
                 }
             }
