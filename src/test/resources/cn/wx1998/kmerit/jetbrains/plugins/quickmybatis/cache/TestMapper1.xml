@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.TestMapper1">
+    <!-- 一个简单的查询语句 -->
+    <select id="findById" parameterType="java.lang.Long" resultType="com.example.User">
+        SELECT id, username, password, email, created_time, updated_time
+        FROM users
+        WHERE id = #{id}
+    </select>
+
+    <!-- 插入语句 -->
+    <insert id="insert" parameterType="com.example.User">
+        INSERT INTO users (username, password, email, created_time, updated_time)
+        VALUES (#{username}, #{password}, #{email}, NOW(), NOW())
+        <selectKey resultType="java.lang.Long" keyProperty="id" order="AFTER">
+            SELECT LAST_INSERT_ID()
+        </selectKey>
+    </insert>
+
+    <!-- 更新语句 -->
+    <update id="update" parameterType="com.example.User">
+        UPDATE users
+        SET username     = #{username},
+            password     = #{password},
+            email        = #{email},
+            updated_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除语句 -->
+    <delete id="deleteById" parameterType="java.lang.Long">
+        DELETE
+        FROM users
+        WHERE id = #{id}
+    </delete>
+
+    <!-- 查询所有用户 -->
+    <select id="findAll" resultType="com.example.User">
+        SELECT id, username, password, email, created_time, updated_time
+        FROM users
+        ORDER BY id DESC
+    </select>
+
+    <!-- 结果映射 -->
+    <resultMap id="userResultMap" type="com.example.User">
+        <id property="id" column="id"/>
+        <result property="username" column="username"/>
+        <result property="password" column="password"/>
+        <result property="email" column="email"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedTime" column="updated_time"/>
+    </resultMap>
+
+    <!-- SQL片段 -->
+    <sql id="userColumns">
+        id
+        , username, password, email, created_time, updated_time
+    </sql>
+
+    <!-- 使用SQL片段的查询 -->
+    <select id="findByUsername" parameterType="java.lang.String" resultMap="userResultMap">
+        SELECT
+        <include refid="userColumns"/>
+        FROM users
+        WHERE username = #{username}
+    </select>
+</mapper>
