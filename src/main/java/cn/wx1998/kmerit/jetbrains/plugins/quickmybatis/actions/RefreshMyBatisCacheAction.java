@@ -2,6 +2,7 @@ package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions;
 
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheManager;
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheManagerFactory;
+import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheRefreshRange;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.Project;
@@ -20,7 +21,7 @@ public class RefreshMyBatisCacheAction extends AnAction {
 
         MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
 
-        cacheManager.performFullCacheRefresh(0);
+        cacheManager.performFullCacheRefresh(MyBatisCacheRefreshRange.ALL, 0);
 
     }
 

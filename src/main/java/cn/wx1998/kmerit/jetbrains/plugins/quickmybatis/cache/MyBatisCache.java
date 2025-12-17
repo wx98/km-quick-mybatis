@@ -34,7 +34,7 @@ public interface MyBatisCache {
 
     int clearXmlFileCache(@NotNull String xmlFilePath);
 
-    int clearAllCache();
+    int clearCache(MyBatisCacheRefreshRange cacheRefreshRange);
 
     Map<String, Set<JavaElementInfo>> getSqlIdToJavaElements();
 

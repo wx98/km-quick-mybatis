@@ -93,13 +93,33 @@ public class CacheDao extends BaseDao {
     }
 
     public int clearAll() {
-        // 清空Java元素缓存
+        // 清空 Java 元素缓存
         int i1 = javaElementDao.clearAll();
-        // 清空XML元素缓存
+        // 清空 XML 元素缓存
         int i2 = xmlElementDao.clearAll();
         // 清空文件摘要缓存
         int i3 = fileDigestDao.clearAll();
         return i1 + i2 + i3;
+    }
+
+    public int clearAllJavaElement() {
+        // 清空 Java 元素缓存
+        return javaElementDao.clearAll();
+    }
+
+    public int clearAllJavaMethodCallElement() {
+        // 清空 Java 元素缓存
+        return javaElementDao.clearAllJavaMethodCall();
+    }
+
+    public int clearAllXmlElement() {
+        // 清空 XML 元素缓存
+        return xmlElementDao.clearAll();
+    }
+
+    public int clearAllFileDigest() {
+        // 清空文件摘要缓存
+        return fileDigestDao.clearAll();
     }
 
 

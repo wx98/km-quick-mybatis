@@ -96,7 +96,7 @@ public interface MyBatisCacheManager {
     /**
      * 清除所有缓存
      */
-    void clearAllCache();
+    void clearCache(MyBatisCacheRefreshRange cacheRefreshRange);
 
 
     /**
@@ -121,7 +121,7 @@ public interface MyBatisCacheManager {
 
     void setScanInterval(long intervalMs);
 
-    void performFullCacheRefresh(int numberOfRefreshes);
+    void performFullCacheRefresh(MyBatisCacheRefreshRange cacheRefreshRange, int numberOfRefreshes);
 
     long getCurrentCacheVersion();
 

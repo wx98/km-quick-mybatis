@@ -29,6 +29,60 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt R"/>
         </action>
+
+        <!-- 一级根菜单 - km-quick-mybatis -->
+        <group id="KmQuickMyBatis.RootGroup"
+               class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions.popup.root.KmQuickMyBatisRootGroup"
+               text="km-quick-mybatis"
+               description="km-quick-mybatis 快捷工具">
+            <!-- 挂载到编辑器右键 + 项目视图右键 -->
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </group>
+
+        <!-- 一级子项 - 添加方法-->
+        <!-- <action id="KmQuickMyBatis.AddMethod"-->
+        <!--         class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions.popup.root.leve1.AddMethodAction"-->
+        <!--         text="添加方法"-->
+        <!--         description="添加MyBatis映射方法">-->
+        <!--     <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>-->
+        <!-- </action>-->
+
+        <!--  二级子菜单 - 刷新 -->
+        <group id="KmQuickMyBatis.RefreshGroup"
+               class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions.popup.root.leve1.leve2.RefreshActionGroup"
+               text="刷新"
+               description="刷新MyBatis缓存相关操作">
+            <!-- 无需挂载到外部分组，由根菜单管理 -->
+        </group>
+
+        <!-- 二级子项 - 刷新所有缓存-->
+        <action id="KmQuickMyBatis.RefreshAllCache"
+                class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions.popup.root.leve1.leve2.RefreshAllCacheAction"
+                text="刷新所有缓存"
+                description="刷新所有MyBatis缓存">
+        </action>
+
+        <!-- 二级子项 - 刷新Xml文件缓存 -->
+        <action id="KmQuickMyBatis.RefreshXmlCache"
+                class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions.popup.root.leve1.leve2.RefreshXmlCacheAction"
+                text="刷新Xml文件缓存"
+                description="刷新MyBatis XML文件缓存">
+        </action>
+
+        <!-- 二级子项 - 刷新Java文件缓存 -->
+        <action id="KmQuickMyBatis.RefreshJavaFileCache"
+                class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions.popup.root.leve1.leve2.RefreshJavaFileCacheAction"
+                text="刷新Java文件缓存"
+                description="刷新MyBatis Java文件缓存">
+        </action>
+
+        <!-- 二级子项 - 刷新Java方法调用缓存 -->
+        <action id="KmQuickMyBatis.RefreshJavaMethodCache"
+                class="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.actions.popup.root.leve1.leve2.RefreshJavaMethodCacheAction"
+                text="刷新Java方法调用缓存"
+                description="刷新MyBatis Java方法调用缓存">
+        </action>
     </actions>
     <!-- 扩展点 -->
     <extensions defaultExtensionNs="com.intellij">

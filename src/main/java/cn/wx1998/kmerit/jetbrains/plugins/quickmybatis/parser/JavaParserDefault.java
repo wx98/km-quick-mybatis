@@ -202,8 +202,9 @@ public class JavaParserDefault implements JavaParser {
          */
         private final Map<String, PsiClass> interfaces = new ConcurrentHashMap<>();
         /**
-         * 类接口方法名
+         * 类方法名 (不将类方法纳入缓存)
          */
+        @Deprecated
         private final Map<String, List<PsiMethod>> classMethodsByName = new ConcurrentHashMap<>();
         /**
          * 接口方法名
@@ -245,9 +246,10 @@ public class JavaParserDefault implements JavaParser {
                     classes.put(className, cls);
                     PsiMethod[] methods = cls.getMethods();
                     for (PsiMethod method : methods) {
-                        String methodKey = className + "." + method.getName();
-                        // 按方法名分组（处理重载）
-                        classMethodsByName.computeIfAbsent(methodKey, k -> new ArrayList<>()).add(method);
+                        // 在大型项目中，类的方法可能非常的多，并且暂时用不到这样的缓存，故注释此段逻辑方式缓存过大
+                        // String methodKey = className + "." + method.getName();
+                        // classMethodsByName.computeIfAbsent(methodKey, k -> new ArrayList<>()).add(method);
+
                         // 包含方法调用的解析
                         if (includeMethodCalls) {
                             PsiCodeBlock body = method.getBody();
@@ -260,7 +262,7 @@ public class JavaParserDefault implements JavaParser {
                                 }
                                 PsiExpressionList argumentList = callExpr.getArgumentList();
                                 PsiExpression[] expressions = argumentList.getExpressions();
-                                if (expressions == null || expressions.length < 1) {
+                                if (expressions.length < 1) {
                                     continue;
                                 }
                                 PsiExpression expression = expressions[0];
@@ -308,6 +310,7 @@ public class JavaParserDefault implements JavaParser {
         }
 
         @Override
+        @Deprecated
         public Map<String, List<PsiMethod>> getAllClassMethods() {
             return Collections.unmodifiableMap(classMethodsByName);
         }
