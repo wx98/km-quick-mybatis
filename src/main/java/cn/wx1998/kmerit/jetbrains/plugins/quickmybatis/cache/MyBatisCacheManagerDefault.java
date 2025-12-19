@@ -13,6 +13,7 @@ import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.ProjectFileUtils;
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.TagLocator;
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.TargetMethodsHolder;
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.TimeStrFormatter;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -607,17 +608,14 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      */
     public void processAllJavaMyBatisMethodCall(@NotNull ProgressIndicator indicator, double proportion, double[] progress) {
         indicator.setText("正在扫描MyBatis方法调用...");
-        ReadAction.run(() -> {
-            List<JavaElementInfo> javaElementInfos = doActualSearch(indicator, proportion, progress);
-            myBatisCache.addJavaElementMapping(javaElementInfos);
-        });
+        List<JavaElementInfo> javaElementInfos = ReadAction.compute(() -> doActualSearch(indicator, proportion, progress));
+        myBatisCache.addJavaElementMapping(javaElementInfos);
     }
 
 
     private List<JavaElementInfo> doActualSearch(ProgressIndicator indicator, double proportion, double[] progress) {
         indicator.setText("正在搜索MyBatis方法调用...");
         indicator.setText2("准备搜索...");
-        // 所有PSI操作统一在ReadAction中执行
         return ReadAction.compute(() -> {
             TargetMethodsHolder targetHolder = new TargetMethodsHolder(project);
             Set<PsiMethod> targetMethods = targetHolder.reloadTargetMethods();
@@ -625,73 +623,124 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             if (targetMethods.isEmpty()) {
                 indicator.setText("未找到任何目标方法，跳过搜索。");
                 progress[0] += proportion;
-                indicator.setFraction(progress[0]);
+                indicator.setFraction(Math.min(progress[0], 1.0));
                 return Collections.emptyList();
             }
 
-            int size = targetMethods.size();
-
             // 计算每个方法的进度步长
-            double step = proportion / size;
+            final int totalMethods = targetMethods.size();
+            final double step = proportion / totalMethods;
 
-            List<JavaElementInfo> javaElementInfoList = new ArrayList<>();
+            // 预初始化集合容量，减少扩容开销
+            final List<JavaElementInfo> javaElementInfoList = new ArrayList<>(totalMethods * 8);
+            // 缩小搜索范围，仅包含项目内的Java文件，排除库文件
+            final GlobalSearchScope searchScope = GlobalSearchScope.projectScope(project);
+            GlobalSearchScope scopeRestrictedByFileTypes = GlobalSearchScope.getScopeRestrictedByFileTypes(searchScope, JavaFileType.INSTANCE);
 
-            // 这里假设该方法已经在一个后台任务中被调用
-            int index = 0;
+            // 每处理10个方法更新一次进度文本，减少UI更新开销
+            final int progressUpdateInterval = Math.max(1, totalMethods / 50);
+
+            int processedCount = 0;
             for (PsiMethod targetMethod : targetMethods) {
-                // 检查取消状态（必须在循环头判断）
+                // 快速取消检测
                 if (indicator.isCanceled()) {
-                    return javaElementInfoList; // 提前返回
+                    break;
                 }
-                index++;
-                // 更新进度信息
-                String className = targetMethod.getContainingClass() != null ? targetMethod.getContainingClass().getQualifiedName() : "未知类";
-                String showText = String.format("(%d/%d) %s.%s", size, index, className, targetMethod.getName());
-                indicator.setText2("正在搜索方法: " + showText);
 
-                // 搜索项目中所有对该方法的调用
-                Query<PsiReference> query = MethodReferencesSearch.search(targetMethod, GlobalSearchScope.allScope(project), true);
+                processedCount++;
+                // 减少UI更新频率
+                if (processedCount % progressUpdateInterval == 0 || processedCount == 1 || processedCount == totalMethods) {
+                    String className = getQualifiedClassName(targetMethod);
+                    String showText = String.format("(%d/%d) %s.%s", processedCount, totalMethods, className, targetMethod.getName());
+                    indicator.setText2("正在搜索方法: " + showText);
+                }
+                // 缩小搜索范围 + 复用查询对象 //  // 不搜索继承的方法引用，减少结果量
+                Query<PsiReference> query = MethodReferencesSearch.search(targetMethod, scopeRestrictedByFileTypes, true);
+                // 使用内部类减少对象创建，批量收集结果
+                collectMethodCallReferences(indicator, query, javaElementInfoList);
 
-                // 使用 forEach 结合 Processor 来处理每个搜索结果
-                query.forEach(new Processor<PsiReference>() {
-                    @Override
-                    public boolean process(PsiReference psiReference) {
-                        // 检查用户是否点击了取消
-                        if (indicator.isCanceled()) {
-                            return false; // 返回 false 停止遍历
-                        }
-
-                        PsiElement element = psiReference.getElement();
-                        PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
-
-                        if (callExpr != null) {
-                            PsiExpressionList argumentList = callExpr.getArgumentList();
-
-                            PsiExpression[] arguments = argumentList.getExpressions();
-                            if (arguments.length == 0) {
-                                return false;
-                            }
-                            PsiExpression firstArgument = arguments[0];
-                            String sqlId = JavaService.parseExpression(firstArgument);
-                            if (sqlId != null && !sqlId.isEmpty()) {
-                                PsiElement originalElement = element.getOriginalElement();
-                                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_METHOD_CALL);
-                                javaElementInfoList.add(javaElementInfo);
-                            }
-
-                        }
-                        return true;
-                    }
-                });
-                progress[0] += step;
-                indicator.setFraction(Math.min(progress[0], 1.0));
+                // 进度更新时做边界检查，避免超过1.0
+                progress[0] = Math.min(progress[0] + step, 1.0);
+                // 每处理5个方法更新一次进度条，减少UI阻塞
+                if (processedCount % 5 == 0) {
+                    indicator.setFraction(progress[0]);
+                }
             }
-
+            // 最终更新进度
+            indicator.setFraction(Math.min(progress[0], 1.0));
             indicator.setText("MyBatis方法调用搜索完成。");
             return javaElementInfoList;
         });
     }
 
+    /**
+     * 优化：提取独立方法，复用逻辑，减少嵌套
+     * 收集方法调用引用并转换为JavaElementInfo
+     */
+    private void collectMethodCallReferences(ProgressIndicator indicator, Query<PsiReference> query, List<JavaElementInfo> resultList) {
+        query.forEach(new Processor<PsiReference>() {
+            @Override
+            public boolean process(PsiReference psiReference) {
+                // 快速取消检测
+                if (indicator.isCanceled()) {
+                    return false;
+                }
+
+                PsiElement element = psiReference.getElement();
+                if (element == null) {
+                    return true;
+                }
+
+                // 优化：提前获取父元素，减少多次PSI查询
+                PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
+                if (callExpr == null) {
+                    return true;
+                }
+
+                PsiExpressionList argumentList = callExpr.getArgumentList();
+                if (argumentList == null) {
+                    return true;
+                }
+
+                PsiExpression[] arguments = argumentList.getExpressions();
+                // 优化：提前判断参数数量，减少无效解析
+                if (arguments.length == 0) {
+                    return true;
+                }
+
+                // 解析第一个参数作为SQL ID
+                String sqlId = JavaService.parseExpression(arguments[0]);
+                if (sqlId == null || sqlId.isEmpty()) {
+                    return true;
+                }
+
+                // 优化：使用getOriginalElement前先判空
+                PsiElement originalElement = element.getOriginalElement();
+                if (originalElement == null) {
+                    return true;
+                }
+
+                // 批量添加到结果集
+                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_METHOD_CALL);
+                resultList.add(javaElementInfo);
+
+                return true;
+            }
+        });
+    }
+
+    /**
+     * 优化：缓存类名获取逻辑，减少重复PSI查询
+     */
+    private String getQualifiedClassName(PsiMethod method) {
+        PsiClass containingClass = method.getContainingClass();
+        if (containingClass == null) {
+            return "未知类";
+        }
+        // 优化：使用getQualifiedName时加判空，避免NPE
+        String qualifiedName = containingClass.getQualifiedName();
+        return qualifiedName != null ? qualifiedName : containingClass.getName();
+    }
 
     /**
      * 增量刷新缓存（只刷新变更的文件）
