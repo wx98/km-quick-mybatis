@@ -2,6 +2,10 @@
 
 # km-quick-mybatis Changelog
 
+## [Unreleased]
+### Fix
+- fix: https://github.com/wx98/km-quick-mybatis/issues/67
+
 ## [1.0.2] - 2025-12-28
 
 ### Optimized
@@ -40,3 +44,4 @@
 [1.0.0]: https://github.com/wx98/km-quick-mybatis/pull/70
 [1.0.1]: https://github.com/wx98/km-quick-mybatis/pull/72
 [1.0.2]: https://github.com/wx98/km-quick-mybatis/compare/1.0.1...HEAD
+[Unreleased]: https://github.com/wx98/km-quick-mybatis/compare/main...feat/1.0.3
