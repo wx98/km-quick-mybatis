@@ -61,7 +61,7 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
                     sqlId = psiClass.getQualifiedName();
                 } else if (element instanceof PsiMethod psiMethod) {
                     PsiClass psiClass = psiMethod.getContainingClass();
-                    String qualifiedName = psiClass.getQualifiedName();
+                    String qualifiedName = psiClass != null ? psiClass.getQualifiedName() : "";
                     String methodName = psiMethod.getName();
                     sqlId = qualifiedName + "." + methodName;
                 } else if (element instanceof PsiField psiField) {
@@ -136,10 +136,7 @@ abstract class ElementFilter {
             String tooltipText = buildTooltipText(element, targetMarkerInfo);
 
             // 将 DOM 元素转换为对应的 XML 标签列表
-            final List<XmlTag> xmlTags = new ArrayList<>();
-            for (XmlTag tag : results) {
-                xmlTags.add(tag);
-            }
+            final List<XmlTag> xmlTags = new ArrayList<>(results);
             // 创建导航标记构建器，设置图标、对齐方式、目标对象以及工具提示信息
             NavigationGutterIconBuilder<PsiElement> builder =
                     NavigationGutterIconBuilder.create(IconLoader.getIcon(IMAGES_MAPPER_METHOD_SVG, this.getClass()))
@@ -169,7 +166,7 @@ abstract class ElementFilter {
                 XmlTag parentTag = xmlTag.getParentTag();
                 String namespace = "";
                 if (parentTag != null) {
-                    namespace = parentTag.getAttribute("namespace").getValue() + ".";
+                    namespace = Objects.requireNonNull(parentTag.getAttribute("namespace")).getValue() + ".";
                 }
                 return namespace + elementText;
             }

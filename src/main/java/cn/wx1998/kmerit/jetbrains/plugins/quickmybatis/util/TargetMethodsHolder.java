@@ -12,9 +12,9 @@ import com.intellij.psi.PsiType;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiShortNamesCache;
 import com.intellij.ui.classFilter.ClassFilter;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -27,6 +27,23 @@ public class TargetMethodsHolder {
         this.project = project;
     }
 
+    @NotNull
+    private static List<String> getStrings() {
+        MyPluginSettings settings = MyPluginSettings.getInstance();
+        ClassFilter[] classFilters = settings.getClassFilters();
+        List<String> classNamesToMonitor = new ArrayList<>();
+        for (ClassFilter classFilter : classFilters) {
+            String pattern = classFilter.getPattern();
+            classNamesToMonitor.add(pattern);
+        }
+
+        if (classNamesToMonitor.isEmpty()) {
+            // 如果没有配置，可以添加一些默认值
+            classNamesToMonitor = List.of("org.apache.ibatis.session.SqlSession");
+        }
+        return classNamesToMonitor;
+    }
+
     /**
      * 根据配置重新加载目标方法
      */
@@ -34,19 +51,7 @@ public class TargetMethodsHolder {
         Set<PsiMethod> targetMethods = Collections.newSetFromMap(new ConcurrentHashMap<>());
         return ReadAction.compute(() -> {
             targetMethods.clear();
-            MyPluginSettings settings = MyPluginSettings.getInstance();
-            ClassFilter[] classFilters = settings.getClassFilters();
-            List<String> classNamesToMonitor = new ArrayList<>();
-            for (ClassFilter classFilter : classFilters) {
-                String pattern = classFilter.getPattern();
-                classNamesToMonitor.add(pattern);
-            }
-
-
-            if (classNamesToMonitor == null || classNamesToMonitor.isEmpty()) {
-                // 如果没有配置，可以添加一些默认值
-                classNamesToMonitor = Arrays.asList("org.apache.ibatis.session.SqlSession");
-            }
+            List<String> classNamesToMonitor = getStrings();
 
             for (String className : classNamesToMonitor) {
                 if (className == null || className.isEmpty()) {
