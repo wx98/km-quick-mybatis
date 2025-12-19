@@ -39,7 +39,7 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
         this.add(decorator.setRemoveAction(button -> TableUtil.removeSelectedItems(myTable)).setButtonComparator(
                 this.getAddButtonText(),
                 this.getAddPatternButtonText(),
-                CommonBundle.message("button.remove", new Object[0])).disableUpDownActions().createPanel(), "Center");
+                CommonBundle.message("button.remove")).disableUpDownActions().createPanel(), "Center");
     }
 
     @Override

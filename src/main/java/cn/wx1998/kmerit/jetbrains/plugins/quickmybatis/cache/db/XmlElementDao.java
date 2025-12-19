@@ -97,7 +97,7 @@ public class XmlElementDao extends BaseDao {
     /**
      * 删除：根据 SQL ID 删除 XML 元素
      *
-     * @return
+     * @return 删除条数
      */
     public int deleteBySqlId(String sqlId) {
         if (sqlId == null || sqlId.trim().isEmpty()) {

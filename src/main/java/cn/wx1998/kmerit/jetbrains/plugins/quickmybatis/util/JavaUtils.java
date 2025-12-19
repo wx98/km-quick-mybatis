@@ -28,15 +28,17 @@ public final class JavaUtils {
         if (StringUtil.isEmpty(clazzName) && StringUtil.isEmpty(methodName)) {
             return Optional.empty();
         }
-        Optional<PsiClass[]> classes = findClasses(project, clazzName);
-        if (classes.isPresent()) {
+        if (clazzName != null) {
+            Optional<PsiClass[]> classes = findClasses(project, clazzName);
+            if (classes.isPresent()) {
 
-            List<PsiMethod> collect = Arrays.stream(classes.get())
-                    .map(psiClass -> psiClass.findMethodsByName(methodName, true))
-                    .flatMap(Arrays::stream)
-                    .toList();
-            return collect.isEmpty() ? Optional.empty() : Optional.of(collect.toArray(new PsiMethod[0]));
+                List<PsiMethod> collect = Arrays.stream(classes.get())
+                        .map(psiClass -> psiClass.findMethodsByName(methodName, true))
+                        .flatMap(Arrays::stream)
+                        .toList();
+                return collect.isEmpty() ? Optional.empty() : Optional.of(collect.toArray(new PsiMethod[0]));
 
+            }
         }
         return Optional.empty();
     }

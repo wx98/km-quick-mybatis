@@ -34,6 +34,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Objects;
 
 public class JavaService implements Serializable {
 
@@ -80,8 +81,8 @@ public class JavaService implements Serializable {
     /**
      * 计算表达式的值
      *
-     * @param expression
-     * @return
+     * @param expression 表达式
+     * @return 表达式的值
      */
     public static String parseExpression(PsiExpression expression) {
         return ReadAction.compute(() -> {
@@ -156,24 +157,38 @@ public class JavaService implements Serializable {
     }
 
     /**
-     * 处理二元表达式
+     * 递归扁平化处理二元表达式（主要用于解析字符串拼接表达式）
+     * <p>
+     * 核心逻辑：将嵌套的二元表达式（如 a + (b + c)）拆解为有序的字符串片段集合，
+     * 保证最终拼接顺序与原表达式语义一致，支持任意层级的嵌套二元表达式解析。
+     * <p>
+     * 示例：
+     * 原表达式："namespace" + "." + "selectUser" → 拆解为 ["namespace", ".", "selectUser"]
+     * 嵌套表达式："namespace" + ("." + "selectUser") → 同样拆解为 ["namespace", ".", "selectUser"]
      *
-     * @param exp
-     * @param parts
+     * @param exp   待解析的二元表达式（如PsiBinaryExpression，通常是字符串拼接操作）
+     * @param parts 用于存储拆解后的表达式片段的双端队列，保证片段顺序与原表达式一致
+     * @see #parseExpression(PsiExpression) 表达式解析入口方法
      */
     private static void flattenBinaryExpression(PsiBinaryExpression exp, Deque<String> parts) {
+        // 获取二元表达式的左操作数
         PsiExpression lOperand = exp.getLOperand();
+        // 获取二元表达式的右操作数
         PsiExpression rOperand = exp.getROperand();
 
+        // 递归处理左操作数：如果左操作数仍是二元表达式，继续拆解；否则解析为字符串并加入队列头部
         if (lOperand instanceof PsiBinaryExpression) {
             flattenBinaryExpression((PsiBinaryExpression) lOperand, parts);
         } else {
+            // 解析非二元表达式的左操作数（如字面量、变量引用等），结果加入队列头部保证顺序
             parts.addFirst(parseExpression(lOperand));
         }
 
+        // 递归处理右操作数：如果右操作数仍是二元表达式，继续拆解；否则解析为字符串并加入队列尾部
         if (rOperand instanceof PsiBinaryExpression) {
             flattenBinaryExpression((PsiBinaryExpression) rOperand, parts);
         } else {
+            // 解析非二元表达式的右操作数，结果加入队列尾部保证顺序
             parts.addLast(parseExpression(rOperand));
         }
     }
@@ -239,13 +254,13 @@ public class JavaService implements Serializable {
     /**
      * 判断方法是否是 SqlSession 的方法
      *
-     * @param callExpression
-     * @return
+     * @param callExpression 方法调用
+     * @return true 是 ， false 否
      */
     public boolean isSqlSessionMethod(PsiMethodCallExpression callExpression) {
         PsiMethod psiMethod = callExpression.resolveMethod();
-        PsiClass containingClass = psiMethod.getContainingClass();
-        String qualifiedName = containingClass.getQualifiedName();
+        PsiClass containingClass = Objects.requireNonNull(psiMethod).getContainingClass();
+        String qualifiedName = Objects.requireNonNull(containingClass).getQualifiedName();
         final var classFilters = MyPluginSettings.getInstance().getClassFilters();
         if (classFilters != null) {
             for (ClassFilter classFilter : classFilters) {
@@ -261,8 +276,8 @@ public class JavaService implements Serializable {
     /**
      * 判断方法是否是 SqlSession 的方法
      *
-     * @param method
-     * @return
+     * @param method 方法
+     * @return true 是，false否
      */
     public boolean isSqlSessionMethod(PsiMethod method) {
         PsiClass containingClass = method.getContainingClass();

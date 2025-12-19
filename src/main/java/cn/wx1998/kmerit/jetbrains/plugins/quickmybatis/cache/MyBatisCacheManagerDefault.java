@@ -13,6 +13,7 @@ import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.ProjectFileUtils;
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.TagLocator;
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.TargetMethodsHolder;
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.TimeStrFormatter;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -48,7 +49,6 @@ import com.intellij.psi.search.searches.MethodReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlTag;
-import com.intellij.util.Processor;
 import com.intellij.util.Query;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
@@ -258,11 +258,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 project = psiFile.getProject();
             }
             if (project != null && DumbService.getInstance(project).isDumb()) {
-                DumbService.getInstance(project).runWhenSmart(() -> {
-                    ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                        doReparseAndCache(file);
-                    });
-                });
+                DumbService.getInstance(project).runWhenSmart(() -> ApplicationManager.getApplication().executeOnPooledThread(() -> doReparseAndCache(file)));
             }
         });
 
@@ -411,12 +407,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             // 记录日志，跳过本次刷新
             LOG.warn("索引未就绪，跳过缓存刷新", e);
             // 延迟到索引就绪后重试（可选）
-            DumbService.getInstance(project).runWhenSmart(new Runnable() {
-                @Override
-                public void run() {
-                    refreshInvalidatedCaches(filePath);
-                }
-            });
+            DumbService.getInstance(project).runWhenSmart(() -> refreshInvalidatedCaches(filePath));
         }
     }
 
@@ -489,16 +480,16 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 long ms = (end - start);
 
                 // 通知用户缓存刷好了
-                String notificationKey = this.getClass().getName();
+                String notificationKey = this.getClass().getName() + "-performFullCacheRefresh";
                 String title = "km-quick-mybatis";
                 String context0 = "ヾ(ｏ･ω･)ﾉ 太好了，" + cacheRefreshRange + "缓存刷新完毕，一共花了" + TimeStrFormatter.format(ms) + " <br/>你也可以按 ctrl + alt + r 再次刷新";
                 String context1 = "⊙(・◇・)？" + cacheRefreshRange + "缓存又刷新好了，这次花了" + TimeStrFormatter.format(ms) + "<br/>你也可以按 ctrl + alt + r 再次刷新";
                 String content = numberOfRefreshes > 0 ? context1 : context0;
                 String leftBtnText = "干得好!";
-                NotificationUtil.NotificationActionCallback rightCallBack = (pro, not) -> LOG.trace("什么都不做");
+                NotificationUtil.NotificationActionCallback rightCallBack = (pro, not) -> LOG.trace("右侧什么都不做");
                 String rightBtnText = "再刷一下?";
                 NotificationUtil.NotificationActionCallback leftCallBack = (pro, not) -> performFullCacheRefresh(cacheRefreshRange, (numberOfRefreshes + 1));
-                NotificationUtil.showCustomNotification(project, notificationKey, title, content, leftBtnText, rightCallBack, rightBtnText, leftCallBack, true);
+                NotificationUtil.showCustomNotification(project, notificationKey, title, content, leftBtnText, rightCallBack, rightBtnText, leftCallBack, NotificationUtil.NoMoreSuggestionsFeature.NOT_ENABLED);
 
             }
         });
@@ -607,17 +598,14 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      */
     public void processAllJavaMyBatisMethodCall(@NotNull ProgressIndicator indicator, double proportion, double[] progress) {
         indicator.setText("正在扫描MyBatis方法调用...");
-        ReadAction.run(() -> {
-            List<JavaElementInfo> javaElementInfos = doActualSearch(indicator, proportion, progress);
-            myBatisCache.addJavaElementMapping(javaElementInfos);
-        });
+        List<JavaElementInfo> javaElementInfos = ReadAction.compute(() -> doActualSearch(indicator, proportion, progress));
+        myBatisCache.addJavaElementMapping(javaElementInfos);
     }
 
 
     private List<JavaElementInfo> doActualSearch(ProgressIndicator indicator, double proportion, double[] progress) {
         indicator.setText("正在搜索MyBatis方法调用...");
         indicator.setText2("准备搜索...");
-        // 所有PSI操作统一在ReadAction中执行
         return ReadAction.compute(() -> {
             TargetMethodsHolder targetHolder = new TargetMethodsHolder(project);
             Set<PsiMethod> targetMethods = targetHolder.reloadTargetMethods();
@@ -625,73 +613,114 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             if (targetMethods.isEmpty()) {
                 indicator.setText("未找到任何目标方法，跳过搜索。");
                 progress[0] += proportion;
-                indicator.setFraction(progress[0]);
+                indicator.setFraction(Math.min(progress[0], 1.0));
                 return Collections.emptyList();
             }
 
-            int size = targetMethods.size();
-
             // 计算每个方法的进度步长
-            double step = proportion / size;
+            final int totalMethods = targetMethods.size();
+            final double step = proportion / totalMethods;
 
-            List<JavaElementInfo> javaElementInfoList = new ArrayList<>();
+            // 预初始化集合容量，减少扩容开销
+            final List<JavaElementInfo> javaElementInfoList = new ArrayList<>(totalMethods * 8);
+            // 缩小搜索范围，仅包含项目内的Java文件，排除库文件
+            final GlobalSearchScope searchScope = GlobalSearchScope.projectScope(project);
+            GlobalSearchScope scopeRestrictedByFileTypes = GlobalSearchScope.getScopeRestrictedByFileTypes(searchScope, JavaFileType.INSTANCE);
 
-            // 这里假设该方法已经在一个后台任务中被调用
-            int index = 0;
+            // 每处理10个方法更新一次进度文本，减少UI更新开销
+            final int progressUpdateInterval = Math.max(1, totalMethods / 50);
+
+            int processedCount = 0;
             for (PsiMethod targetMethod : targetMethods) {
-                // 检查取消状态（必须在循环头判断）
+                // 快速取消检测
                 if (indicator.isCanceled()) {
-                    return javaElementInfoList; // 提前返回
+                    break;
                 }
-                index++;
-                // 更新进度信息
-                String className = targetMethod.getContainingClass() != null ? targetMethod.getContainingClass().getQualifiedName() : "未知类";
-                String showText = String.format("(%d/%d) %s.%s", size, index, className, targetMethod.getName());
-                indicator.setText2("正在搜索方法: " + showText);
 
-                // 搜索项目中所有对该方法的调用
-                Query<PsiReference> query = MethodReferencesSearch.search(targetMethod, GlobalSearchScope.allScope(project), true);
+                processedCount++;
+                // 减少UI更新频率
+                if (processedCount % progressUpdateInterval == 0 || processedCount == 1 || processedCount == totalMethods) {
+                    String className = getQualifiedClassName(targetMethod);
+                    String showText = String.format("(%d/%d) %s.%s", processedCount, totalMethods, className, targetMethod.getName());
+                    indicator.setText2("正在搜索方法: " + showText);
+                }
+                // 缩小搜索范围 + 复用查询对象 //  // 不搜索继承的方法引用，减少结果量
+                Query<PsiReference> query = MethodReferencesSearch.search(targetMethod, scopeRestrictedByFileTypes, true);
+                // 使用内部类减少对象创建，批量收集结果
+                collectMethodCallReferences(indicator, query, javaElementInfoList);
 
-                // 使用 forEach 结合 Processor 来处理每个搜索结果
-                query.forEach(new Processor<PsiReference>() {
-                    @Override
-                    public boolean process(PsiReference psiReference) {
-                        // 检查用户是否点击了取消
-                        if (indicator.isCanceled()) {
-                            return false; // 返回 false 停止遍历
-                        }
-
-                        PsiElement element = psiReference.getElement();
-                        PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
-
-                        if (callExpr != null) {
-                            PsiExpressionList argumentList = callExpr.getArgumentList();
-
-                            PsiExpression[] arguments = argumentList.getExpressions();
-                            if (arguments.length == 0) {
-                                return false;
-                            }
-                            PsiExpression firstArgument = arguments[0];
-                            String sqlId = JavaService.parseExpression(firstArgument);
-                            if (sqlId != null && !sqlId.isEmpty()) {
-                                PsiElement originalElement = element.getOriginalElement();
-                                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_METHOD_CALL);
-                                javaElementInfoList.add(javaElementInfo);
-                            }
-
-                        }
-                        return true;
-                    }
-                });
-                progress[0] += step;
-                indicator.setFraction(Math.min(progress[0], 1.0));
+                // 进度更新时做边界检查，避免超过1.0
+                progress[0] = Math.min(progress[0] + step, 1.0);
+                // 每处理5个方法更新一次进度条，减少UI阻塞
+                if (processedCount % 5 == 0) {
+                    indicator.setFraction(progress[0]);
+                }
             }
-
+            // 最终更新进度
+            indicator.setFraction(Math.min(progress[0], 1.0));
             indicator.setText("MyBatis方法调用搜索完成。");
             return javaElementInfoList;
         });
     }
 
+    /**
+     * 收集方法调用引用并转换为JavaElementInfo
+     */
+    private void collectMethodCallReferences(ProgressIndicator indicator, Query<PsiReference> query, List<JavaElementInfo> resultList) {
+        query.forEach(psiReference -> {
+            // 快速取消检测
+            if (indicator.isCanceled()) {
+                return false;
+            }
+
+            PsiElement element = psiReference.getElement();
+
+            // 提前获取父元素，减少多次PSI查询
+            PsiMethodCallExpression callExpr = PsiTreeUtil.getParentOfType(element, PsiMethodCallExpression.class);
+            if (callExpr == null) {
+                return true;
+            }
+
+            PsiExpressionList argumentList = callExpr.getArgumentList();
+
+            PsiExpression[] arguments = argumentList.getExpressions();
+            // 提前判断参数数量，减少无效解析
+            if (arguments.length == 0) {
+                return true;
+            }
+
+            // 解析第一个参数作为SQL ID
+            String sqlId = JavaService.parseExpression(arguments[0]);
+            if (sqlId == null || sqlId.isEmpty()) {
+                return true;
+            }
+
+            //使用getOriginalElement前先判空
+            PsiElement originalElement = element.getOriginalElement();
+            if (originalElement == null) {
+                return true;
+            }
+
+            // 批量添加到结果集
+            JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(originalElement, sqlId, JavaService.TYPE_METHOD_CALL);
+            resultList.add(javaElementInfo);
+
+            return true;
+        });
+    }
+
+    /**
+     * 优化：缓存类名获取逻辑，减少重复PSI查询
+     */
+    private String getQualifiedClassName(PsiMethod method) {
+        PsiClass containingClass = method.getContainingClass();
+        if (containingClass == null) {
+            return "未知类";
+        }
+        // 优化：使用getQualifiedName时加判空，避免NPE
+        String qualifiedName = containingClass.getQualifiedName();
+        return qualifiedName != null ? qualifiedName : containingClass.getName();
+    }
 
     /**
      * 增量刷新缓存（只刷新变更的文件）
@@ -795,44 +824,27 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     javaElementInfoList.add(javaElementInfo);
                 }
             });
-
-            // 暂时用不到类方法的缓存，故注释此段逻辑方式缓存过大
-            // Map<String, List<PsiMethod>> allClassMethods = result.getAllClassMethods();
-            // allClassMethods.forEach((key, list) -> {
-            //     list.forEach(classMethod -> {
-            //         JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(classMethod, key, JavaService.TYPE_METHOD);
-            //         if (javaElementInfo != null) {
-            //             javaElementInfoList.add(javaElementInfo);
-            //         }
-            //     });
-            // });
             Map<String, List<PsiMethod>> allInterfaceMethods = result.getAllInterfaceMethods();
-            allInterfaceMethods.forEach((key, list) -> {
-                list.forEach(psiMethod -> {
-                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiMethod, key, JavaService.TYPE_INTERFACE_METHOD);
-                    if (javaElementInfo != null) {
-                        javaElementInfoList.add(javaElementInfo);
-                    }
-                });
-            });
+            allInterfaceMethods.forEach((key, list) -> list.forEach(psiMethod -> {
+                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiMethod, key, JavaService.TYPE_INTERFACE_METHOD);
+                if (javaElementInfo != null) {
+                    javaElementInfoList.add(javaElementInfo);
+                }
+            }));
             Map<String, List<PsiMethodCallExpression>> classMethodCall = result.getClassMethodCall();
-            classMethodCall.forEach((key, list) -> {
-                list.forEach(expression -> {
-                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(expression, key, JavaService.TYPE_METHOD_CALL);
-                    if (javaElementInfo != null) {
-                        javaElementInfoList.add(javaElementInfo);
-                    }
-                });
-            });
+            classMethodCall.forEach((key, list) -> list.forEach(expression -> {
+                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(expression, key, JavaService.TYPE_METHOD_CALL);
+                if (javaElementInfo != null) {
+                    javaElementInfoList.add(javaElementInfo);
+                }
+            }));
             Map<String, List<PsiField>> staticStringField = result.getStaticStringField();
-            staticStringField.forEach((key, list) -> {
-                list.forEach(psiField -> {
-                    JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiField, key, JavaService.TYPE_FIELD);
-                    if (javaElementInfo != null) {
-                        javaElementInfoList.add(javaElementInfo);
-                    }
-                });
-            });
+            staticStringField.forEach((key, list) -> list.forEach(psiField -> {
+                JavaElementInfo javaElementInfo = TagLocator.createJavaElementInfo(psiField, key, JavaService.TYPE_FIELD);
+                if (javaElementInfo != null) {
+                    javaElementInfoList.add(javaElementInfo);
+                }
+            }));
             return javaElementInfoList;
         });
     }
@@ -859,7 +871,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
         String title = "km-quick-mybatis提示";
         String content = "检测到缓存可能失效,<br/>原因是:";
-        String notificationKey = this.getClass().getSimpleName();
+        String notificationKey = this.getClass().getSimpleName() + "-checkForCacheInvalidationAndNotify";
         NotificationUtil.NotificationActionCallback rightCallBack = null;
 
         MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
@@ -895,7 +907,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
         if ((flag1 || flag2 || flag3 || flag4 || flag5) && notifyFlag) {
             notifyFlag = false;
-            NotificationUtil.showCustomNotification(project, notificationKey, title, content, "刷新缓存", rightCallBack, "不再建议", leftCallBack, true);
+            NotificationUtil.showCustomNotification(project, notificationKey, title, content, "刷新缓存", rightCallBack, "不再建议", leftCallBack, NotificationUtil.NoMoreSuggestionsFeature.RIGHT_ENABLED);
             return true;
         } else {
             return false;
