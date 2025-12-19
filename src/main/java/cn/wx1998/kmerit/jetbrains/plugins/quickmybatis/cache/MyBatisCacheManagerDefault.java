@@ -480,7 +480,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 long ms = (end - start);
 
                 // 通知用户缓存刷好了
-                String notificationKey = this.getClass().getName();
+                String notificationKey = this.getClass().getName() + "-performFullCacheRefresh";
                 String title = "km-quick-mybatis";
                 String context0 = "ヾ(ｏ･ω･)ﾉ 太好了，" + cacheRefreshRange + "缓存刷新完毕，一共花了" + TimeStrFormatter.format(ms) + " <br/>你也可以按 ctrl + alt + r 再次刷新";
                 String context1 = "⊙(・◇・)？" + cacheRefreshRange + "缓存又刷新好了，这次花了" + TimeStrFormatter.format(ms) + "<br/>你也可以按 ctrl + alt + r 再次刷新";
@@ -489,7 +489,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 NotificationUtil.NotificationActionCallback rightCallBack = (pro, not) -> LOG.trace("右侧什么都不做");
                 String rightBtnText = "再刷一下?";
                 NotificationUtil.NotificationActionCallback leftCallBack = (pro, not) -> performFullCacheRefresh(cacheRefreshRange, (numberOfRefreshes + 1));
-                NotificationUtil.showCustomNotification(project, notificationKey, title, content, leftBtnText, rightCallBack, rightBtnText, leftCallBack, true);
+                NotificationUtil.showCustomNotification(project, notificationKey, title, content, leftBtnText, rightCallBack, rightBtnText, leftCallBack, NotificationUtil.NoMoreSuggestionsFeature.NOT_ENABLED);
 
             }
         });
@@ -871,7 +871,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
         String title = "km-quick-mybatis提示";
         String content = "检测到缓存可能失效,<br/>原因是:";
-        String notificationKey = this.getClass().getSimpleName();
+        String notificationKey = this.getClass().getSimpleName() + "-checkForCacheInvalidationAndNotify";
         NotificationUtil.NotificationActionCallback rightCallBack = null;
 
         MyBatisCacheManager cacheManager = MyBatisCacheManagerFactory.getRecommendedParser(project);
@@ -907,7 +907,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
         if ((flag1 || flag2 || flag3 || flag4 || flag5) && notifyFlag) {
             notifyFlag = false;
-            NotificationUtil.showCustomNotification(project, notificationKey, title, content, "刷新缓存", rightCallBack, "不再建议", leftCallBack, true);
+            NotificationUtil.showCustomNotification(project, notificationKey, title, content, "刷新缓存", rightCallBack, "不再建议", leftCallBack, NotificationUtil.NoMoreSuggestionsFeature.RIGHT_ENABLED);
             return true;
         } else {
             return false;
