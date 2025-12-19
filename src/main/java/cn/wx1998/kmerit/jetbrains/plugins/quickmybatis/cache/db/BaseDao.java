@@ -18,7 +18,7 @@ import java.sql.SQLException;
  */
 public abstract class BaseDao {
     // 自定义BeanProcessor，实现下划线转驼峰
-    protected static BeanProcessor beanProcessor = new BeanProcessor() {
+    protected final static BeanProcessor beanProcessor = new BeanProcessor() {
         @Override
         protected int[] mapColumnsToProperties(ResultSetMetaData rsmd, PropertyDescriptor[] props) throws SQLException {
             final int cols = rsmd.getColumnCount();
@@ -75,7 +75,7 @@ public abstract class BaseDao {
     /**
      * 构造自定义RowProcessor
      */
-    protected static RowProcessor rowProcessor = new BasicRowProcessor(beanProcessor);
+    protected static final RowProcessor rowProcessor = new BasicRowProcessor(beanProcessor);
     /**
      * 数据库管理
      */

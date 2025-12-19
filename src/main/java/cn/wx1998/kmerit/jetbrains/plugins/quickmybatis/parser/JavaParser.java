@@ -54,12 +54,6 @@ public interface JavaParser {
 
         List<PsiMethod> getInterfaceMethodsByName(String interfaceMethodName);
 
-        //暂时用不到类方法的缓存，故注释此段逻辑方式缓存过大
-        @Deprecated
-        Map<String, List<PsiMethod>> getAllClassMethods();
-
-        List<PsiMethod> getClassMethodsByName(String classMethodName);
-
         Map<String, List<PsiMethodCallExpression>> getClassMethodCall();
 
         Map<String, List<PsiField>> getStaticStringField();

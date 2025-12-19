@@ -2,7 +2,6 @@ package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.parser;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -38,23 +37,23 @@ public final class MyBatisXmlStructure {
     public static final String CACHE_TAG = "cache";
     public static final String CACHE_REF_TAG = "cache-ref";
     // SQL语句的通用属性
-    public static final Set<String> COMMON_STATEMENT_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id", "parameterType", "parameterMap", "resultType", "resultMap", "timeout", "fetchSize", "statementType", "resultSetType", "flushCache", "useCache", "databaseId", "lang")));
+    public static final Set<String> COMMON_STATEMENT_ATTRIBUTES = Set.of("id", "parameterType", "parameterMap", "resultType", "resultMap", "timeout", "fetchSize", "statementType", "resultSetType", "flushCache", "useCache", "databaseId", "lang");
     // INSERT语句特有的属性
-    public static final Set<String> INSERT_SPECIFIC_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("useGeneratedKeys", "keyProperty", "keyColumn", "keyGenerator", "resultSets")));
+    public static final Set<String> INSERT_SPECIFIC_ATTRIBUTES = Set.of("useGeneratedKeys", "keyProperty", "keyColumn", "keyGenerator", "resultSets");
     // UPDATE语句特有的属性
-    public static final Set<String> UPDATE_SPECIFIC_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(List.of("flushCache")));
+    public static final Set<String> UPDATE_SPECIFIC_ATTRIBUTES = Set.copyOf(List.of("flushCache"));
     // DELETE语句特有的属性
-    public static final Set<String> DELETE_SPECIFIC_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(List.of("flushCache")));
+    public static final Set<String> DELETE_SPECIFIC_ATTRIBUTES = Set.copyOf(List.of("flushCache"));
     // SELECT语句特有的属性
-    public static final Set<String> SELECT_SPECIFIC_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("useCache", "resultOrdered", "resultSets")));
+    public static final Set<String> SELECT_SPECIFIC_ATTRIBUTES = Set.of("useCache", "resultOrdered", "resultSets");
     // RESULT MAP的属性
-    public static final Set<String> RESULT_MAP_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("id", "type", "extend", "autoMapping")));
+    public static final Set<String> RESULT_MAP_ATTRIBUTES = Set.of("id", "type", "extend", "autoMapping");
     // SQL片段的属性
-    public static final Set<String> SQL_FRAGMENT_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(List.of("id")));
+    public static final Set<String> SQL_FRAGMENT_ATTRIBUTES = Set.copyOf(List.of("id"));
     // MAPPER标签的属性
-    public static final Set<String> MAPPER_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(List.of("namespace")));
+    public static final Set<String> MAPPER_ATTRIBUTES = Set.copyOf(List.of("namespace"));
     // MyBatis DTD的URL
-    public static final String[] MYBATIS_DTD_URLS = new String[]{"http://mybatis.org/dtd/mybatis-3-mapper.dtd", "https://mybatis.org/dtd/mybatis-3-mapper.dtd", "http://www.mybatis.org/dtd/mybatis-3-mapper.dtd", "https://www.mybatis.org/dtd/mybatis-3-mapper.dtd"};
+    public static final String[] MYBATIS_DTD_URLS = new String[]{"https://mybatis.org/dtd/mybatis-3-mapper.dtd", "https://mybatis.org/dtd/mybatis-3-mapper.dtd", "https://www.mybatis.org/dtd/mybatis-3-mapper.dtd", "https://www.mybatis.org/dtd/mybatis-3-mapper.dtd"};
 
     // 私有构造函数，防止实例化
     private MyBatisXmlStructure() {

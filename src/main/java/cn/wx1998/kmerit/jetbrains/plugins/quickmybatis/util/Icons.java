@@ -3,6 +3,7 @@ package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util;
 /**
  * 图标接口，定义了与插件相关的图标路径常量。
  */
+@SuppressWarnings("ALL")
 public interface Icons {
 
     /**
