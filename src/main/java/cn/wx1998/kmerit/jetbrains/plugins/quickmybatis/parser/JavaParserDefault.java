@@ -71,7 +71,7 @@ public class JavaParserDefault implements JavaParser {
     @Override
     public JavaParseResult parseEverything(PsiJavaFile file) {
         String path = file.getVirtualFile().getPath();
-        LOG.debug("开始解析Java文件: " + path);
+        LOG.debug("开始解析Java文件所有内容: " + path);
 
         // 验证文件有效性
         boolean isValid = isValidJavaFile(file);
@@ -202,11 +202,6 @@ public class JavaParserDefault implements JavaParser {
          */
         private final Map<String, PsiClass> interfaces = new ConcurrentHashMap<>();
         /**
-         * 类方法名 (不将类方法纳入缓存)
-         */
-        @Deprecated
-        private final Map<String, List<PsiMethod>> classMethodsByName = new ConcurrentHashMap<>();
-        /**
          * 接口方法名
          */
         private final Map<String, List<PsiMethod>> interfaceMethodsByName = new ConcurrentHashMap<>();
@@ -294,9 +289,7 @@ public class JavaParserDefault implements JavaParser {
 
         @Override
         public String getQualifiedName() {
-            return ReadAction.compute(() -> {
-                return file.getPackageName() + "." + file.getName().replace(".java", "");
-            });
+            return ReadAction.compute(() -> file.getPackageName() + "." + file.getName().replace(".java", ""));
         }
 
         @Override
@@ -310,12 +303,6 @@ public class JavaParserDefault implements JavaParser {
         }
 
         @Override
-        @Deprecated
-        public Map<String, List<PsiMethod>> getAllClassMethods() {
-            return Collections.unmodifiableMap(classMethodsByName);
-        }
-
-        @Override
         public Map<String, List<PsiMethod>> getAllInterfaceMethods() {
             return Collections.unmodifiableMap(interfaceMethodsByName);
         }
@@ -323,11 +310,6 @@ public class JavaParserDefault implements JavaParser {
         @Override
         public List<PsiMethod> getInterfaceMethodsByName(String interfaceMethodName) {
             return Collections.unmodifiableList(interfaceMethodsByName.getOrDefault(interfaceMethodName, new ArrayList<>()));
-        }
-
-        @Override
-        public List<PsiMethod> getClassMethodsByName(String classMethodName) {
-            return Collections.unmodifiableList(classMethodsByName.getOrDefault(classMethodName, new ArrayList<>()));
         }
 
         @Override

@@ -1,7 +1,5 @@
 package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util;
 
-import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheManager;
-import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheManagerFactory;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationGroupManager;
@@ -26,19 +24,24 @@ public class NotificationUtil {
     private static final String DEFAULT_NOTIFICATION_GROUP_ID = "cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.NotificationUtil";
 
     /**
-     * 通用通知显示方法（全自定义）
+     * 通用通知显示方法,
+     * <br/>
+     * noMoreSuggestionsFeature的枚举参考如下：
+     * <li/> {@link NoMoreSuggestionsFeature#LEFT_ENABLED}:点击左侧不再建议、
+     * <li/> {@link NoMoreSuggestionsFeature#RIGHT_ENABLED}:点击右侧不再建议、
+     * <li/> {@link NoMoreSuggestionsFeature#NOT_ENABLED}:不启用不再建议功能
      *
-     * @param project              当前项目（不可为null）
-     * @param notificationKey      通知唯一标识（用于区分不同通知的"不再建议"状态，不可为null/空）
-     * @param title                通知标题（不可为null/空）
-     * @param content              通知内容（不可为null/空）
-     * @param leftBtnText          左侧按钮文本（不可为null/空）
-     * @param leftBtnAction        左侧按钮点击逻辑（不可为null）
-     * @param rightBtnText         右侧按钮文本（不可为null/空）
-     * @param rightBtnAction       右侧按钮点击逻辑（不可为null）
-     * @param enableDoNotShowAgain 是否启用"不再建议"持久化（true=启用，false=不启用）
+     * @param project                  当前项目（不可为null）
+     * @param notificationKey          通知唯一标识（用于区分不同通知的"不再建议"状态，不可为null/空）
+     * @param title                    通知标题（不可为null/空）
+     * @param content                  通知内容（不可为null/空）
+     * @param leftBtnText              左侧按钮文本（不可为null/空）
+     * @param leftBtnAction            左侧按钮点击逻辑（不可为null）
+     * @param rightBtnText             右侧按钮文本（不可为null/空）
+     * @param rightBtnAction           右侧按钮点击逻辑（不可为null）
+     * @param noMoreSuggestionsFeature 不再建议功能 根据此值来决定选择建议后是否还再提醒用户
      */
-    public static void showCustomNotification(@NotNull Project project, @NotNull String notificationKey, @NotNull String title, @NotNull String content, @NotNull String leftBtnText, @NotNull NotificationActionCallback leftBtnAction, @NotNull String rightBtnText, @NotNull NotificationActionCallback rightBtnAction, boolean enableDoNotShowAgain) {
+    public static void showCustomNotification(@NotNull Project project, @NotNull String notificationKey, @NotNull String title, @NotNull String content, @NotNull String leftBtnText, @NotNull NotificationActionCallback leftBtnAction, @NotNull String rightBtnText, @NotNull NotificationActionCallback rightBtnAction, NoMoreSuggestionsFeature noMoreSuggestionsFeature) {
         // 1. 参数校验（避免空指针）
         Objects.requireNonNull(project, "Project cannot be null");
         Objects.requireNonNull(notificationKey, "NotificationKey cannot be null or empty");
@@ -51,7 +54,7 @@ public class NotificationUtil {
 
 
         // 2. 若启用"不再建议"，先检查状态
-        if (enableDoNotShowAgain) {
+        if (!NoMoreSuggestionsFeature.NOT_ENABLED.equals(noMoreSuggestionsFeature)) {
             NotificationSettings settings = NotificationSettings.getInstance(project);
             if (settings.isDoNotShowAgain(notificationKey)) {
                 return;
@@ -65,6 +68,11 @@ public class NotificationUtil {
         notification.addAction(new NotificationAction(leftBtnText) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {
+                if (NoMoreSuggestionsFeature.LEFT_ENABLED.equals(noMoreSuggestionsFeature)) {
+                    // 若启用"不再建议"，点击右侧按钮时保存状态
+                    project.getService(NotificationSettings.class).setDoNotShowAgain(notificationKey, true);
+                }
+
                 // 执行外部传入的点击逻辑
                 leftBtnAction.execute(e.getProject(), notification);
                 // 执行后自动关闭通知（可根据需求改为由外部控制）
@@ -76,8 +84,8 @@ public class NotificationUtil {
         notification.addAction(new NotificationAction(rightBtnText) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {
-                // 若启用"不再建议"，点击右侧按钮时保存状态
-                if (enableDoNotShowAgain) {
+                if (NoMoreSuggestionsFeature.RIGHT_ENABLED.equals(noMoreSuggestionsFeature)) {
+                    // 若启用"不再建议"，点击右侧按钮时保存状态
                     project.getService(NotificationSettings.class).setDoNotShowAgain(notificationKey, true);
                 }
                 // 执行外部传入的点击逻辑
@@ -89,6 +97,13 @@ public class NotificationUtil {
 
         // 6. 显示通知
         notification.notify(project);
+    }
+
+    /**
+     * 不再建议枚举
+     */
+    public enum NoMoreSuggestionsFeature {
+        RIGHT_ENABLED, LEFT_ENABLED, NOT_ENABLED
     }
 
     /**

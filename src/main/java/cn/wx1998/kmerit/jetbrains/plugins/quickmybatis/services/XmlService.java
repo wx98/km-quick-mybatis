@@ -41,8 +41,7 @@ public class XmlService implements Serializable {
      * @return the instance
      */
     public static XmlService getInstance(@NotNull Project project) {
-        XmlService service = project.getService(XmlService.class);
-        return service;
+        return project.getService(XmlService.class);
     }
 
 

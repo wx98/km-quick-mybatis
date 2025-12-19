@@ -34,7 +34,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 
 public class ProjectFileUtils {
@@ -116,7 +115,7 @@ public class ProjectFileUtils {
     public static String calculateFileDigest(String filePath) {
         File file = new File(filePath);
         // 校验文件合法性
-        if (file == null || !file.exists() || !file.isFile()) {
+        if (!file.exists() || !file.isFile()) {
             return "";
         }
 
@@ -134,7 +133,7 @@ public class ProjectFileUtils {
             for (byte b : digest.digest()) {
                 String hex = Integer.toHexString(0xff & b);
                 if (hex.length() == 1) {
-                    hexString.append('0'); // 补前导0，保证两位
+                    hexString.append('0');
                 }
                 hexString.append(hex);
             }
@@ -166,7 +165,7 @@ public class ProjectFileUtils {
                 .maximumSize(filePaths.size()) // 缓存大小=文件数
                 .build(new CacheLoader<>() {
                     @Override
-                    public String load(String filePath) throws Exception {
+                    public String load(String filePath) {
                         // 核心：单个文件摘要计算（带超时/异常处理）
                         return calculateFileDigestWithTimeout(filePath, 5000); // 5秒超时
                     }
@@ -199,7 +198,7 @@ public class ProjectFileUtils {
                 } catch (Exception e) {
                     LOG.error("计算文件摘要失败：filePath=" + filePath, e);
                 }
-            }, executor)).collect(Collectors.toList());
+            }, executor)).toList();
 
             // 等待所有任务完成（带总超时）
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);

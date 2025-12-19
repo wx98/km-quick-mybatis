@@ -24,6 +24,7 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiIdentifier;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiMethodCallExpression;
+import com.intellij.psi.PsiParameter;
 import com.intellij.psi.PsiWhiteSpace;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlFile;
@@ -104,13 +105,13 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
                     return psiClass.getName() != null ? psiClass.getName() : "未知类";
                 } else if (element instanceof PsiMethod psiMethod) {
                     // 处理Java方法（展示方法名+参数类型简写）
-                    String methodName = psiMethod.getName() != null ? psiMethod.getName() : "未知方法";
+                    String methodName = psiMethod.getName();
                     // 参数类型简写（如：String→S，Integer→I，无参数→()）
-                    String paramShorthand = Arrays.stream(psiMethod.getParameterList().getParameters()).map(param -> param.getName()).collect(Collectors.joining(","));
+                    String paramShorthand = Arrays.stream(psiMethod.getParameterList().getParameters()).map(PsiParameter::getName).collect(Collectors.joining(","));
                     return methodName + "(" + paramShorthand + ")";
                 } else if (element instanceof PsiField psiField) {
                     // 处理字段
-                    return psiField.getName() != null ? psiField.getName() : "未知字段";
+                    return psiField.getName();
                 } else if (element instanceof PsiIdentifier psiIdentifier) {
                     PsiMethodCallExpression validMethodCallFromSqlSessionIdentifier = PsiTreeUtil.getParentOfType(psiIdentifier, PsiMethodCallExpression.class, true);
                     if (validMethodCallFromSqlSessionIdentifier == null) {
@@ -120,7 +121,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
                     PsiFile containingFile = element.getContainingFile();
                     Project project = containingFile != null ? containingFile.getProject() : null;
                     int lineNumber = 0;
-                    if (containingFile != null && project != null) {
+                    if (containingFile != null) {
                         PsiDocumentManager documentManager = PsiDocumentManager.getInstance(project);
                         Document document = documentManager.getDocument(containingFile);
                         if (document != null) {
@@ -178,13 +179,6 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
      * @param from 表示 MyBatis XML 元素的源 XmlToken
      * @return 如果找到，则包含 PsiElements（Java 方法或类）数组的 Optional；否则为空 Optional
      */
-    /**
-     * 应用查找给定 MyBatis XML 元素对应的 Java 方法或类的逻辑。
-     * 使用直接XML解析获取namespace和statement ID，通过缓存的JavaElementInfo+偏移量定位目标元素。
-     *
-     * @param from 表示 MyBatis XML 元素的源 XmlToken
-     * @return 如果找到，则包含 PsiElements（Java 方法或类）数组的 Optional；否则为空 Optional
-     */
     public Optional<? extends PsiElement[]> apply(@NotNull XmlToken from) {
         LOG.debug("Applying XmlLineMarkerProvider for element: " + from.getText());
 
@@ -230,10 +224,6 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
                 targetClasses.add(javaElement);
             }
 
-            if (targetClasses.isEmpty()) {
-                LOG.debug("No Java class found for namespace: " + namespace);
-                return Optional.empty();
-            }
             // 转换为PsiClass数组返回（保持原有返回类型兼容）
             return Optional.of(targetClasses.toArray(new PsiElement[0]));
         }
@@ -261,7 +251,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
 
             // 从缓存获取SQL ID对应的Java元素信息
             Set<JavaElementInfo> javaElementInfos = myBatisCache.getJavaElementsBySqlId(fullSqlId);
-            if (javaElementInfos == null || javaElementInfos.isEmpty()) {
+            if (javaElementInfos.isEmpty()) {
                 LOG.debug("No JavaElementInfo found for sqlId: " + fullSqlId);
                 return Optional.empty();
             }
@@ -273,10 +263,6 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
                 targetMethods.add(javaElement);
             }
 
-            if (targetMethods.isEmpty()) {
-                LOG.debug("No Java method found for sqlId: " + fullSqlId);
-                return Optional.empty();
-            }
             // 转换为PsiMethod数组返回（保持原有返回类型兼容）
             return Optional.of(targetMethods.toArray(new PsiElement[0]));
         }
