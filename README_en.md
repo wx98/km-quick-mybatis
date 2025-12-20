@@ -14,7 +14,6 @@
 <p align="center"><b>Java and MyBatisXml jump plugin based on IntelliJ IDEs.</b></p>
 <p align="center"><img src="./.github/readme/screenshots.gif" alt="screenshots"></p>
 
-
 [![Getting Started][badge:get-started-en]][get-started-en]
 [![开始使用][badge:get-started-zh]][get-started-zh]
 ---
@@ -74,7 +73,7 @@ Plugin based on the [IntelliJ Platform Plugin Template][template].
 [gh:last-commit]: https://github.com/wx98/km-quick-mybatis/commits/main
 [gh:last-issues]: https://github.com/wx98/km-quick-mybatis/issues
 
-[get-started-en]: https://github.com/wx98/km-quick-mybatis/blob/main/README.md
-[get-started-zh]: https://github.com/wx98/km-quick-mybatis/blob/main/README_zh.md
+[get-started-en]: https://github.com/wx98/km-quick-mybatis/blob/main/README_en.md
+[get-started-zh]: https://github.com/wx98/km-quick-mybatis/blob/main/README.md
 
 [template]: https://github.com/JetBrains/intellij-platform-plugin-template
