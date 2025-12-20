@@ -25,8 +25,9 @@ import java.util.Collection;
  */
 public class TagLocator {
 
+    private static final String LOG_PREFIX = "[kmQuickMybatis 元素定位器]";
+
     private static final Logger LOG = Logger.getInstance(TagLocator.class);
-    private static final String LOG_PREFIX = "[TagLocator] ";
 
     // ==========================================================================
     // 元素信息创建方法

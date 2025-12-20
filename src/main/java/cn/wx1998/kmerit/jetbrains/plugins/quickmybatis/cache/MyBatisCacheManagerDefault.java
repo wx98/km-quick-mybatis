@@ -71,11 +71,11 @@ import java.util.stream.Collectors;
  */
 public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     // 日志前缀
-    private static final String CACHE_LOG_PREFIX = "[MyBatis缓存管理器] ";
-    // 单例键（按项目隔离）
-    private static final Key<MyBatisCacheManagerDefault> INSTANCE_KEY = Key.create("MyBatisCacheManager.Instance");
+    private static final String LOG_PREFIX = "[kmQuickMybatis 缓存管理器]";
     // 日志实例
     private static final Logger LOG = Logger.getInstance(MyBatisCacheManagerDefault.class);
+    // 单例键（按项目隔离）
+    private static final Key<MyBatisCacheManagerDefault> INSTANCE_KEY = Key.create("MyBatisCacheManager.Instance");
     /**
      * 通知标记
      */
@@ -122,7 +122,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         registerFileListener();
         // 2. 启动定时扫描任务（定时缓存驱逐）
         startPeriodicScan();
-        LOG.debug(CACHE_LOG_PREFIX + "缓存管理器初始化完成，项目: " + project.getName());
+        LOG.debug(LOG_PREFIX + "缓存管理器初始化完成，项目: " + project.getName());
     }
 
     /**
@@ -141,14 +141,13 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
 
                     // 1. 使用API判断文件是否被排除（.idea、target等目录会被自动识别）
                     if (fileIndex.isExcluded(file)) {
-                        LOG.debug(CACHE_LOG_PREFIX + "忽略被排除的文件: " + file.getPath());
+                        LOG.debug(LOG_PREFIX + "忽略被排除的文件: " + file.getPath());
                         continue;
                     }
 
-
-                    // 2. 可选：只处理源码目录中的文件（进一步精准过滤）
+                    // 2. 只处理源码目录中的文件（进一步精准过滤）
                     if (!fileIndex.isInSourceContent(file)) {
-                        LOG.debug(CACHE_LOG_PREFIX + "忽略非源码目录文件: " + file.getPath());
+                        LOG.debug(LOG_PREFIX + "忽略非源码目录文件: " + file.getPath());
                         continue;
                     }
 
@@ -157,18 +156,18 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                     if (extension == null) continue;
                     if (!extension.equals("java") && !extension.equals("xml")) continue;
 
-                    // 索引没有就绪，直接跳过
+                    // 4. 索引没有就绪，直接跳过
                     if (DumbService.getInstance(project).isDumb()) {
-                        return;
+                        continue;
                     }
 
                     // 4. 处理有效文件的变更
                     if (event instanceof VFileContentChangeEvent) {
-                        LOG.debug(CACHE_LOG_PREFIX + "文件变化触发缓存失效: " + file.getPath());
+                        LOG.debug(LOG_PREFIX + "文件变化触发缓存失效: " + file.getPath());
                         ReadAction.run(() -> refreshInvalidatedCaches(file.getPath()));
                     }
                     if (event instanceof VFileDeleteEvent) {
-                        LOG.debug(CACHE_LOG_PREFIX + "文件删除触发缓存失效: " + file.getPath());
+                        LOG.debug(LOG_PREFIX + "文件删除触发缓存失效: " + file.getPath());
                         ReadAction.run(() -> refreshInvalidatedCaches(file.getPath()));
                     }
                 }
@@ -191,14 +190,14 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 scanForFileChanges();
             }
         }, scanIntervalMs, scanIntervalMs, TimeUnit.MILLISECONDS);
-        LOG.debug(CACHE_LOG_PREFIX + "定时扫描任务启动，间隔: " + scanIntervalMs + "ms");
+        LOG.debug(LOG_PREFIX + "定时扫描任务启动，间隔: " + scanIntervalMs + "ms");
     }
 
     /**
      * 扫描文件变化，通过摘要对比判断是否需要刷新缓存
      */
     void scanForFileChanges() {
-        LOG.debug(CACHE_LOG_PREFIX + "开始定时扫描文件变化");
+        LOG.debug(LOG_PREFIX + "开始定时扫描文件变化");
         int changedCount = 0;
         int newCount = 0;
         //得到所有文件
@@ -223,7 +222,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 String newDigest = ProjectFileUtils.calculateFileDigest(filePath);
                 if (!newDigest.equals(oldDigest)) {
                     // 摘要不一致，文件已修改
-                    LOG.info(CACHE_LOG_PREFIX + "文件内容变更: " + filePath + "（旧摘要: " + oldDigest + ", 新摘要: " + newDigest + "）");
+                    LOG.info(LOG_PREFIX + "文件内容变更: " + filePath + "（旧摘要: " + oldDigest + ", 新摘要: " + newDigest + "）");
                     clearFileCache(filePath);
                     myBatisCache.saveFileDigest(file, newDigest); // 更新摘要
                     reparseAndCacheFile(file); // 重新解析
@@ -233,7 +232,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         }
         // 剩下的就是新增文件
         for (String filePath : filePathList) {
-            LOG.debug(CACHE_LOG_PREFIX + "发现 " + filePathList.size() + " 个新增文件");
+            LOG.debug(LOG_PREFIX + "发现 " + filePathList.size() + " 个新增文件");
             clearFileCache(filePath);
             String newDigest = ProjectFileUtils.calculateFileDigest(filePath);
             VirtualFile file = LocalFileSystem.getInstance().findFileByPath(filePath);
@@ -244,7 +243,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             }
         }
 
-        LOG.info(CACHE_LOG_PREFIX + "定时扫描完成，发现 " + changedCount + " 个变更文件，" + newCount + " 个新增文件");
+        LOG.info(LOG_PREFIX + "定时扫描完成，发现 " + changedCount + " 个变更文件，" + newCount + " 个新增文件");
     }
 
     /**
@@ -253,20 +252,23 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     private void reparseAndCacheFile(@NotNull VirtualFile file) {
         ReadAction.run(() -> {
             PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
-            Project project = null;
-            if (psiFile != null) {
-                project = psiFile.getProject();
-            }
-            if (project != null && DumbService.getInstance(project).isDumb()) {
+            if (psiFile == null) return;
+            Project project = psiFile.getProject();
+            if (DumbService.getInstance(project).isDumb()) {
+                // 索引未就绪时，注册回调在索引就绪时执行，不立即执行
                 DumbService.getInstance(project).runWhenSmart(() -> ApplicationManager.getApplication().executeOnPooledThread(() -> doReparseAndCache(file)));
+            } else {
+                doReparseAndCache(file);
             }
         });
-
-        // 索引就绪时直接执行
-        doReparseAndCache(file);
     }
 
+    /**
+     * 刷新单个文件缓存
+     */
     private void doReparseAndCache(VirtualFile file) {
+        LOG.trace(LOG_PREFIX + "刷新文件缓存 doReparseAndCache:" + file.getPath());
+
         try {
             ReadAction.run(() -> {
                 PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
@@ -287,20 +289,16 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             });
         } catch (IndexNotReadyException e) {
             // 兜底：即使漏检，也捕获异常避免崩溃
-            LOG.warn("索引未就绪，跳过文件解析: " + file.getName(), e);
+            LOG.warn(LOG_PREFIX + "索引未就绪，跳过文件解析: " + file.getName(), e);
+        } catch (NullPointerException e) {
+            // 添加对NullPointerException的捕获，避免在代码未完全解析时崩溃
+            LOG.warn(LOG_PREFIX + "解析Java文件时遇到空指针异常，可能是索引未就绪: " + file.getName(), e);
+        } catch (Exception e) {
+            // 添加对其他异常的捕获，确保插件不会崩溃
+            LOG.warn(LOG_PREFIX + "解析文件时遇到未知异常: " + file.getName(), e);
         }
     }
     // ========================= 缓存操作核心方法 =========================
-
-    @Override
-    public void putClassXmlMapping(@NotNull String className, @NotNull String xmlFilePath) {
-        LOG.debug(CACHE_LOG_PREFIX + "建立Class与Xml映射: " + className + " -> " + xmlFilePath);
-    }
-
-    @Override
-    public void putMethodStatementMapping(@NotNull String className, @NotNull String methodName, @NotNull String statementId) {
-        LOG.debug(CACHE_LOG_PREFIX + "建立方法与SqlId映射: " + className + "#" + methodName + " -> " + statementId);
-    }
 
     @Override
     @Nullable
@@ -342,32 +340,31 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         Set<JavaElementInfo> javaElements = myBatisCache.getJavaElementsBySqlId(statementId);
         if (javaElements.isEmpty()) return null;
 
-        // 过滤出当前XML文件关联的Java方法（简化逻辑）
-        return javaElements.stream().filter(info -> "method".equals(info.getElementType())).map(JavaElementInfo::getSqlId).map(id -> id.substring(id.lastIndexOf(".") + 1)) // 从SQL ID中提取方法名
-                .findFirst().orElse(null);
+        // 过滤出当前XML文件关联的Java方法
+        return javaElements.stream().filter(info -> "method".equals(info.getElementType())).map(JavaElementInfo::getSqlId).map(id -> id.substring(id.lastIndexOf(".") + 1)).findFirst().orElse(null);
     }
 
     // ========================= 缓存失效与清理 =========================
 
     @Override
-    public void clearClassCache(@NotNull String className) {
+    public void clearJavaFileCache(@NotNull String javaFilePath) {
         // 清除类关联的所有缓存
-        myBatisCache.clearJavaFileCache(className);
-        LOG.debug(CACHE_LOG_PREFIX + "清除类缓存: " + className);
+        myBatisCache.clearJavaFileCache(javaFilePath);
+        LOG.debug(LOG_PREFIX + "清除类缓存: " + javaFilePath);
     }
 
     @Override
     public void clearXmlFileCache(@NotNull String xmlFilePath) {
         // 清除XML文件关联的所有缓存
         myBatisCache.clearXmlFileCache(xmlFilePath);
-        LOG.debug(CACHE_LOG_PREFIX + "清除XML文件缓存: " + xmlFilePath);
+        LOG.debug(LOG_PREFIX + "清除XML文件缓存: " + xmlFilePath);
     }
 
     @Override
     public void clearFileCache(@NotNull String filePath) {
         // 自动判断文件类型并清除缓存
         if (filePath.endsWith(".java")) {
-            clearClassCache(filePath);
+            clearJavaFileCache(filePath);
         } else if (filePath.endsWith(".xml")) {
             clearXmlFileCache(filePath);
         }
@@ -376,13 +373,13 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     @Override
     public void clearCache(MyBatisCacheRefreshRange cacheRefreshRange) {
         myBatisCache.clearCache(cacheRefreshRange);
-        LOG.debug("清除" + cacheRefreshRange + "缓存");
+        LOG.debug(LOG_PREFIX + "清除" + cacheRefreshRange + "缓存");
     }
 
     @Override
     public void refreshInvalidatedCaches(String filePath) {
         try {
-            LOG.debug(CACHE_LOG_PREFIX + "开始刷新无效缓存");
+            LOG.debug(LOG_PREFIX + "开始刷新无效缓存");
 
             // 从缓存获取当前文件涉及的所有sqlId
             Set<String> allSqlIdList = myBatisCache.getAllSqlIdByFilePath(filePath);
@@ -402,10 +399,10 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 }
             }
 
-            LOG.debug(CACHE_LOG_PREFIX + "刷新无效缓存完成");
+            LOG.debug(LOG_PREFIX + "刷新无效缓存完成");
         } catch (IndexNotReadyException e) {
             // 记录日志，跳过本次刷新
-            LOG.warn("索引未就绪，跳过缓存刷新", e);
+            LOG.warn(LOG_PREFIX + "索引未就绪，跳过缓存刷新", e);
             // 延迟到索引就绪后重试（可选）
             DumbService.getInstance(project).runWhenSmart(() -> refreshInvalidatedCaches(filePath));
         }
@@ -422,7 +419,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     @Override
     public void setCacheConfig(@NotNull MyBatisCache myBatisCache) {
         this.myBatisCache = myBatisCache;
-        LOG.debug(CACHE_LOG_PREFIX + "更新缓存配置");
+        LOG.debug(LOG_PREFIX + "更新缓存配置");
     }
 
 
@@ -432,8 +429,10 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         // 重启定时任务
         scheduler.shutdownNow();
         startPeriodicScan();
-        LOG.debug(CACHE_LOG_PREFIX + "更新扫描间隔为: " + intervalMs + "ms");
+        LOG.debug(LOG_PREFIX + "更新扫描间隔为: " + intervalMs + "ms");
     }
+
+    // ========================= 缓存刷新功能 =========================
 
     /**
      * 执行全局缓存刷新（带进度提示）
@@ -486,7 +485,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
                 String context1 = "⊙(・◇・)？" + cacheRefreshRange + "缓存又刷新好了，这次花了" + TimeStrFormatter.format(ms) + "<br/>你也可以按 ctrl + alt + r 再次刷新";
                 String content = numberOfRefreshes > 0 ? context1 : context0;
                 String leftBtnText = "干得好!";
-                NotificationUtil.NotificationActionCallback rightCallBack = (pro, not) -> LOG.trace("右侧什么都不做");
+                NotificationUtil.NotificationActionCallback rightCallBack = (pro, not) -> LOG.trace(LOG_PREFIX + "右侧什么都不做");
                 String rightBtnText = "再刷一下?";
                 NotificationUtil.NotificationActionCallback leftCallBack = (pro, not) -> performFullCacheRefresh(cacheRefreshRange, (numberOfRefreshes + 1));
                 NotificationUtil.showCustomNotification(project, notificationKey, title, content, leftBtnText, rightCallBack, rightBtnText, leftCallBack, NotificationUtil.NoMoreSuggestionsFeature.NOT_ENABLED);
@@ -529,10 +528,10 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             // 调用Xml解析器拿到结果
             MyBatisXmlParser.MyBatisParseResult parse = parser.parse(xmlFile);
             //更新缓存
-            LOG.debug("MyBatis XML文件解析完成: " + filePath);
+            LOG.debug(LOG_PREFIX + "MyBatis XML文件解析完成: " + filePath);
             List<XmlElementInfo> tmp = syncToCacheManager(parse);
             xmlElementInfos.addAll(tmp);
-            LOG.debug("MyBatis XML同步到缓存完成: " + filePath);
+            LOG.debug(LOG_PREFIX + "MyBatis XML同步到缓存完成: " + filePath);
             // 更新进度
             progress[0] += step;
             // 设置进度
@@ -573,10 +572,10 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             // 调用Xml解析器拿到结果
             JavaParser.JavaParseResult parse = parser.parse(psiJavaFile);
             //更新缓存
-            LOG.debug("Java 文件解析完成: " + filePath);
+            LOG.debug(LOG_PREFIX + "Java 文件解析完成: " + filePath);
             List<JavaElementInfo> tmp = syncToCacheManager(parse);
             javaElementInfosAll.addAll(tmp);
-            LOG.debug("Java 同步到缓存完成: " + filePath);
+            LOG.debug(LOG_PREFIX + "Java 同步到缓存完成: " + filePath);
             // 更新进度
             progress[0] += step;
             // 设置进度
@@ -586,7 +585,6 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         myBatisCache.addJavaElementMapping(javaElementInfosAll);
         indicator.setFraction(Math.min(progress[0], 1.0));
     }
-
 
     /**
      * 处理并缓存项目中所有MyBatis相关的方法调用。
@@ -601,7 +599,6 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         List<JavaElementInfo> javaElementInfos = ReadAction.compute(() -> doActualSearch(indicator, proportion, progress));
         myBatisCache.addJavaElementMapping(javaElementInfos);
     }
-
 
     private List<JavaElementInfo> doActualSearch(ProgressIndicator indicator, double proportion, double[] progress) {
         indicator.setText("正在搜索MyBatis方法调用...");
@@ -722,21 +719,8 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         return qualifiedName != null ? qualifiedName : containingClass.getName();
     }
 
-    /**
-     * 增量刷新缓存（只刷新变更的文件）
-     */
-    public void performIncrementalRefresh() {
-        ProgressManager.getInstance().run(new Task.Backgroundable(project, "增量刷新MyBatis缓存") {
-            @Override
-            public void run(@NotNull ProgressIndicator indicator) {
-                indicator.setText("正在检查变更文件...");
-                scanForFileChanges(); // 调用父类的文件变更扫描
-                indicator.setText("增量刷新完成");
-                incrementCacheVersion();
-//                MyBatisCachePersistenceManager.manualSaveCache(project);
-            }
-        });
-    }
+    // ========================= 版本更新 =========================
+
 
     /**
      * 增加缓存版本号
@@ -760,6 +744,8 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     public boolean isCacheUpToDate(long lastKnownVersion) {
         return cacheVersion.get() == lastKnownVersion;
     }
+
+    // ========================= 解析结果转换 =========================
 
     /**
      * 同步解析结果到缓存管理器
@@ -849,6 +835,9 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         });
     }
 
+
+    // ========================= 通知功能 =========================
+
     @Override
     public boolean checkForCacheInvalidationAndNotify(Project project) {
         int countElementJavaTable = myBatisCache.countElementJavaTable();
@@ -903,7 +892,7 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             rightCallBack = (currentProject, notification) -> cacheManager.performFullCacheRefresh(MyBatisCacheRefreshRange.JAVA_METHOD_CALL, 0);
         }
 
-        NotificationUtil.NotificationActionCallback leftCallBack = (currentProject, notification) -> LOG.trace("什么都不做");
+        NotificationUtil.NotificationActionCallback leftCallBack = (currentProject, notification) -> LOG.trace(LOG_PREFIX + "什么都不做");
 
         if ((flag1 || flag2 || flag3 || flag4 || flag5) && notifyFlag) {
             notifyFlag = false;

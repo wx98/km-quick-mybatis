@@ -26,6 +26,9 @@ import java.util.stream.Collectors;
  */
 public class MyBatisCacheDefault implements MyBatisCache {
 
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis 缓存操作实现类]";
+    // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(MyBatisCacheDefault.class);
     /**
      * 单例模式（按项目隔离缓存）
@@ -56,14 +59,14 @@ public class MyBatisCacheDefault implements MyBatisCache {
         long time1 = System.currentTimeMillis();
         int count1 = cacheDao.batchInsertJavaElementInfo(javaElementInfoList);
         long time2 = System.currentTimeMillis();
-        LOG.debug((time2 - time1) + "ms,addJavaElementMapping.javaElementDao.batchInsert:javaElementInfoList.size=" + javaElementInfoList.size() + ",count1=" + count1);
+        LOG.debug(LOG_PREFIX + (time2 - time1) + "ms,addJavaElementMapping.javaElementDao.batchInsert:javaElementInfoList.size=" + javaElementInfoList.size() + ",count1=" + count1);
         Set<String> uniqueFilePaths = javaElementInfoList.stream().map(JavaElementInfo::getFilePath).filter(Objects::nonNull).filter(path -> !path.trim().isEmpty()).collect(Collectors.toSet());
         Map<String, String> fileMap = ProjectFileUtils.calculateFileDigestsParallel(uniqueFilePaths);
         long time3 = System.currentTimeMillis();
-        LOG.debug((time3 - time2) + "ms,addJavaElementMapping.digest.calculateFileDigest:fileMap.size=" + fileMap.size());
+        LOG.debug(LOG_PREFIX + (time3 - time2) + "ms,addJavaElementMapping.digest.calculateFileDigest:fileMap.size=" + fileMap.size());
         int count2 = cacheDao.batchInsertFileDigest(fileMap);
         long time4 = System.currentTimeMillis();
-        LOG.debug((time4 - time3) + "ms,addJavaElementMapping.fileDigestDao.batchInsert:fileMap.size=" + fileMap.size() + ",count2=" + count2);
+        LOG.debug(LOG_PREFIX + (time4 - time3) + "ms,addJavaElementMapping.fileDigestDao.batchInsert:fileMap.size=" + fileMap.size() + ",count2=" + count2);
     }
 
     /**
@@ -86,14 +89,14 @@ public class MyBatisCacheDefault implements MyBatisCache {
         long time1 = System.currentTimeMillis();
         int count1 = cacheDao.batchInsertXmlElementInfo(xmlElementInfoList);
         long time2 = System.currentTimeMillis();
-        LOG.debug((time2 - time1) + "ms,addXmlElementMapping.xmlElementDao.batchInsert:xmlElementInfoList.size=" + xmlElementInfoList.size() + ",count1=" + count1);
+        LOG.debug(LOG_PREFIX + (time2 - time1) + "ms,addXmlElementMapping.xmlElementDao.batchInsert:xmlElementInfoList.size=" + xmlElementInfoList.size() + ",count1=" + count1);
         Set<String> uniqueFilePaths = xmlElementInfoList.stream().map(XmlElementInfo::getFilePath).filter(Objects::nonNull).filter(path -> !path.trim().isEmpty()).collect(Collectors.toSet());
         Map<String, String> fileMap = ProjectFileUtils.calculateFileDigestsParallel(uniqueFilePaths);
         long time3 = System.currentTimeMillis();
-        LOG.debug((time3 - time2) + "ms,addXmlElementMapping.digest.calculateFileDigest:fileMap.size=" + fileMap.size());
+        LOG.debug(LOG_PREFIX + (time3 - time2) + "ms,addXmlElementMapping.digest.calculateFileDigest:fileMap.size=" + fileMap.size());
         int count2 = cacheDao.batchInsertFileDigest(fileMap);
         long time4 = System.currentTimeMillis();
-        LOG.debug((time4 - time3) + "ms,addXmlElementMapping.fileDigestDao.batchInsert:fileMap.size=" + fileMap.size() + ",count2=" + count2);
+        LOG.debug(LOG_PREFIX + (time4 - time3) + "ms,addXmlElementMapping.fileDigestDao.batchInsert:fileMap.size=" + fileMap.size() + ",count2=" + count2);
     }
 
     /**
@@ -265,4 +268,5 @@ public class MyBatisCacheDefault implements MyBatisCache {
     public int countElementJavaTableByMethodCall() {
         return cacheDao.countElementJavaTableByMethodCall();
     }
+
 }

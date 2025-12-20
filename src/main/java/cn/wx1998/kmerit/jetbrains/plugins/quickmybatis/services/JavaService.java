@@ -34,7 +34,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Objects;
 
 public class JavaService implements Serializable {
 
@@ -51,6 +50,8 @@ public class JavaService implements Serializable {
     public static final String TYPE_FIELD = "field";
     @NonNls
     public static final String TYPE_METHOD_CALL = "methodCall";
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis Java服务]";
     // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(JavaService.class);
     @Serial
@@ -236,17 +237,17 @@ public class JavaService implements Serializable {
      * 获取项目中所有的MyBatis XML文件
      */
     public List<PsiJavaFile> getAllJavaFiles() {
-        LOG.debug("Finding all Java files in project");
+        LOG.debug(LOG_PREFIX + "Finding all Java files in project");
         return ReadAction.compute(() -> {
             List<PsiFile> filesByTypeInSourceRoots = ProjectFileUtils.getVirtualFileListByTypeInSourceRoots(project, "java");
             List<PsiJavaFile> psiJavaFiles = new ArrayList<>();
             for (PsiFile file : filesByTypeInSourceRoots) {
                 if (file instanceof PsiJavaFile psiJavaFile) {
                     psiJavaFiles.add(psiJavaFile);
-                    LOG.debug("Found Java file: " + file.getVirtualFile().getPath());
+                    LOG.debug(LOG_PREFIX + "Found Java file: " + file.getVirtualFile().getPath());
                 }
             }
-            LOG.debug("Total Java files found: " + psiJavaFiles.size());
+            LOG.debug(LOG_PREFIX + "Total Java files found: " + psiJavaFiles.size());
             return psiJavaFiles;
         });
     }
@@ -259,8 +260,20 @@ public class JavaService implements Serializable {
      */
     public boolean isSqlSessionMethod(PsiMethodCallExpression callExpression) {
         PsiMethod psiMethod = callExpression.resolveMethod();
-        PsiClass containingClass = Objects.requireNonNull(psiMethod).getContainingClass();
-        String qualifiedName = Objects.requireNonNull(containingClass).getQualifiedName();
+        // 添加空指针检查，避免在代码未完全解析时抛出异常
+        if (psiMethod == null) {
+            return false;
+        }
+        PsiClass containingClass = psiMethod.getContainingClass();
+        // 添加空指针检查，避免在代码未完全解析时抛出异常
+        if (containingClass == null) {
+            return false;
+        }
+        String qualifiedName = containingClass.getQualifiedName();
+        // 添加空指针检查，避免在代码未完全解析时抛出异常
+        if (qualifiedName == null) {
+            return false;
+        }
         final var classFilters = MyPluginSettings.getInstance().getClassFilters();
         if (classFilters != null) {
             for (ClassFilter classFilter : classFilters) {

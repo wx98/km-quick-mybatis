@@ -16,6 +16,8 @@ import java.util.List;
 
 public class XmlService implements Serializable {
 
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis Xml服务] ";
     // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(XmlService.class);
 
@@ -53,17 +55,17 @@ public class XmlService implements Serializable {
      * 获取项目中所有的MyBatis XML文件
      */
     public List<XmlFile> getMyBatisXmlFiles() {
-        LOG.debug("Finding all MyBatis XML files in project");
+        LOG.debug(LOG_PREFIX + "Finding all MyBatis XML files in project");
         return ReadAction.compute(() -> {
             List<PsiFile> filesByTypeInSourceRoots = ProjectFileUtils.getVirtualFileListByTypeInSourceRoots(project, "xml");
             List<XmlFile> xmlFileList = new ArrayList<>();
             for (PsiFile file : filesByTypeInSourceRoots) {
                 if (file instanceof XmlFile xmlFile) {
                     xmlFileList.add(xmlFile);
-                    LOG.debug("Found MyBatis XML file: " + file.getVirtualFile().getPath());
+                    LOG.debug(LOG_PREFIX + "Found MyBatis XML file: " + file.getVirtualFile().getPath());
                 }
             }
-            LOG.debug("Total MyBatis XML files found: " + xmlFileList.size());
+            LOG.debug(LOG_PREFIX + "Total MyBatis XML files found: " + xmlFileList.size());
             return xmlFileList;
         });
     }

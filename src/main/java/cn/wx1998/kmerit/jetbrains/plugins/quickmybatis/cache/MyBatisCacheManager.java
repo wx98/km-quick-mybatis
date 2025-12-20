@@ -56,28 +56,11 @@ public interface MyBatisCacheManager {
     String getMethodForStatementId(@NotNull String xmlFilePath, @NotNull String statementId);
 
     /**
-     * 存储Java类与XML文件的映射关系
-     *
-     * @param className   Java类名
-     * @param xmlFilePath XML文件路径
-     */
-    void putClassXmlMapping(@NotNull String className, @NotNull String xmlFilePath);
-
-    /**
-     * 存储Java方法与XML语句ID的映射关系
-     *
-     * @param className   Java类名
-     * @param methodName  Java方法名
-     * @param statementId XML语句ID
-     */
-    void putMethodStatementMapping(@NotNull String className, @NotNull String methodName, @NotNull String statementId);
-
-    /**
      * 清除指定Java类的所有缓存
      *
      * @param className Java类名
      */
-    void clearClassCache(@NotNull String className);
+    void clearJavaFileCache(@NotNull String className);
 
     /**
      * 清除指定XML文件的所有缓存

@@ -42,6 +42,8 @@ import static cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.Icons.IMAGES_
 
 public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
 
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis Java文件标记器]";
     // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(JavaLineMarkerProvider.class);
 
@@ -83,7 +85,7 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
                     for (XmlElementInfo xmlElementInfo : xmlElementInfos) {
                         XmlTag xmlTagByInfo = TagLocator.findXmlTagByInfo(xmlElementInfo, project);
                         if (xmlTagByInfo == null) {
-                            LOG.debug("xmlElementInfo 未找到： " + xmlElementInfo);
+                            LOG.debug(LOG_PREFIX + "xmlElementInfo 未找到： " + xmlElementInfo);
                             continue;
                         }
                         processor.process(xmlTagByInfo);
@@ -138,12 +140,7 @@ abstract class ElementFilter {
             // 将 DOM 元素转换为对应的 XML 标签列表
             final List<XmlTag> xmlTags = new ArrayList<>(results);
             // 创建导航标记构建器，设置图标、对齐方式、目标对象以及工具提示信息
-            NavigationGutterIconBuilder<PsiElement> builder =
-                    NavigationGutterIconBuilder.create(IconLoader.getIcon(IMAGES_MAPPER_METHOD_SVG, this.getClass()))
-                            .setAlignment(GutterIconRenderer.Alignment.CENTER)
-                            .setTargets(xmlTags)
-                            .setTargetRenderer(getRenderer())
-                            .setTooltipTitle(tooltipText);
+            NavigationGutterIconBuilder<PsiElement> builder = NavigationGutterIconBuilder.create(IconLoader.getIcon(IMAGES_MAPPER_METHOD_SVG, this.getClass())).setAlignment(GutterIconRenderer.Alignment.CENTER).setTargets(xmlTags).setTargetRenderer(getRenderer()).setTooltipTitle(tooltipText);
 
             // 将生成的导航标记信息添加到结果集中
             if (targetMarkerInfo != null) {

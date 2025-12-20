@@ -3,15 +3,21 @@ package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
+import com.intellij.util.Consumer;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -38,6 +44,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class ProjectFileUtils {
 
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis 文件工具类]";
+    // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(ProjectFileUtils.class);
 
     /**
@@ -140,11 +149,11 @@ public class ProjectFileUtils {
             return hexString.toString();
         } catch (NoSuchAlgorithmException e) {
             // 算法不支持时返回空
-            LOG.error("不支持的哈希算法：SHA-256", e);
+            LOG.error(LOG_PREFIX + "不支持的哈希算法：SHA-256", e);
             return "";
         } catch (IOException e) {
             // 文件读取异常时返回空
-            LOG.error("读取文件失败：" + filePath + "，异常：", e);
+            LOG.error(LOG_PREFIX + "读取文件失败：" + filePath + "，异常：", e);
             return "";
         }
     }
@@ -196,7 +205,7 @@ public class ProjectFileUtils {
                     // 从缓存获取（已计算则直接返回，未计算则调用load方法）
                     digestCache.get(filePath);
                 } catch (Exception e) {
-                    LOG.error("计算文件摘要失败：filePath=" + filePath, e);
+                    LOG.error(LOG_PREFIX + "计算文件摘要失败：filePath=" + filePath, e);
                 }
             }, executor)).toList();
 
@@ -212,16 +221,16 @@ public class ProjectFileUtils {
                         resultMap.put(filePath, digest);
                     }
                 } catch (Exception e) {
-                    LOG.error("获取缓存的文件摘要失败：filePath=" + filePath, e);
+                    LOG.error(LOG_PREFIX + "获取缓存的文件摘要失败：filePath=" + filePath, e);
                 }
             }
             return resultMap;
 
         } catch (TimeoutException e) {
-            LOG.error("文件摘要计算超时（总超时60秒）", e);
+            LOG.error(LOG_PREFIX + "文件摘要计算超时（总超时60秒）", e);
             return Collections.emptyMap();
         } catch (Exception e) {
-            LOG.error("文件摘要并行计算异常", e);
+            LOG.error(LOG_PREFIX + "文件摘要并行计算异常", e);
             return Collections.emptyMap();
         } finally {
             // 优雅关闭线程池
@@ -249,12 +258,85 @@ public class ProjectFileUtils {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
-            LOG.error("计算文件摘要超时（" + timeoutMs + "ms）：filePath=" + filePath, e);
+            LOG.error(LOG_PREFIX + "计算文件摘要超时（" + timeoutMs + "ms）：filePath=" + filePath, e);
             return "";
         } catch (Exception e) {
-            LOG.error("计算文件摘要失败：filePath=" + filePath, e);
+            LOG.error(LOG_PREFIX + "计算文件摘要失败：filePath=" + filePath, e);
             return "";
         }
     }
+
+    /**
+     * 同步获取最新PsiFile
+     * 遵循PSI操作的线程规范：读操作在ReadAction，写操作（commitDocument）在WriteAction
+     * 避免在保存监听器中直接修改PSI，通过invokeLater异步处理（若在监听器中调用）
+     *
+     * @param project     项目实例
+     * @param virtualFile 虚拟文件
+     * @return 最新PsiFile，无效则返回null
+     */
+    @Nullable
+    public static PsiFile getLatestPsiFile(@NotNull Project project, @NotNull VirtualFile virtualFile) {
+        // 前置校验：过滤无效文件、目录，快速失败
+        if (!virtualFile.isValid() || virtualFile.isDirectory()) {
+            return null;
+        }
+
+        // 第一步：ReadAction中读取基础PsiFile和Document状态
+        return ReadAction.compute(() -> {
+            PsiManager psiManager = PsiManager.getInstance(project);
+            PsiDocumentManager documentManager = PsiDocumentManager.getInstance(project);
+
+            // 初步获取PsiFile（可能为旧内容）
+            PsiFile psiFile = psiManager.findFile(virtualFile);
+            if (psiFile == null) {
+                return null;
+            }
+
+            Document document = documentManager.getDocument(psiFile);
+            // 若Document已提交，直接返回当前PsiFile
+            if (document == null || !documentManager.isUncommited(document)) {
+                return psiFile;
+            }
+
+            // 第二步：若Document未提交，在WriteAction中执行commit（同步阻塞）
+            // 注意：若该方法被「保存监听器」调用，需改用invokeLater 异步执行WriteAction
+            boolean isCommitSuccess = WriteAction.compute(() -> {
+                try {
+                    // 执行Document提交（修改PSI的写操作）
+                    documentManager.commitDocument(document);
+                    return true;
+                } catch (Exception e) {
+                    // 捕获 "Must not modify PSI inside save listener" 等异常
+                    e.printStackTrace();
+                    return false;
+                }
+            });
+
+            // 提交成功后，重新获取最新的PsiFile
+            return isCommitSuccess ? psiManager.findFile(virtualFile) : psiFile;
+        });
+    }
+
+    /**
+     * 【推荐】异步版本：适用于在保存监听器/事件回调中调用的场景
+     * 避免在监听器的同步线程中修改PSI，通过invokeLater异步执行
+     *
+     * @param project     项目实例
+     * @param virtualFile 虚拟文件
+     * @param callback    获取到最新PsiFile后的回调
+     */
+    public static void getLatestPsiFileAsync(@NotNull Project project, @NotNull VirtualFile virtualFile, @NotNull Consumer<PsiFile> callback) {
+        if (!virtualFile.isValid() || virtualFile.isDirectory()) {
+            callback.accept(null);
+            return;
+        }
+        // 使用 executeOnPooledThread ，在后台线程执行
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            PsiFile psiFile = getLatestPsiFile(project, virtualFile);
+            callback.accept(psiFile);
+        });
+    }
+
 
 }
