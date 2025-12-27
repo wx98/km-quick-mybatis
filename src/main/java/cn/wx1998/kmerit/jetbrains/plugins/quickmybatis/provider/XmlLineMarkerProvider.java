@@ -224,6 +224,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             List<PsiElement> targetClasses = new ArrayList<>();
             for (JavaElementInfo info : javaElementInfos) {
                 PsiElement javaElement = TagLocator.findJavaTagByInfo(info, project);
+                if (javaElement == null) continue;
                 targetClasses.add(javaElement);
             }
 
@@ -263,6 +264,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             List<PsiElement> targetMethods = new ArrayList<>();
             for (JavaElementInfo info : javaElementInfos) {
                 PsiElement javaElement = TagLocator.findJavaTagByInfo(info, project);
+                if (javaElement == null) continue;
                 targetMethods.add(javaElement);
             }
 
