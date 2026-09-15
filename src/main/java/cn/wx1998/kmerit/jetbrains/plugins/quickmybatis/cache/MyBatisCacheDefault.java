@@ -38,17 +38,17 @@ public class MyBatisCacheDefault implements MyBatisCache {
     /**
      * 缓存操作
      */
-    private static CacheDao cacheDao;
+    private final CacheDao cacheDao;
 
     /**
      * 私有构造器
      */
-    private MyBatisCacheDefault() {
+    private MyBatisCacheDefault(@NotNull Project project) {
+        this.cacheDao = new CacheDao(project);
     }
 
     public static MyBatisCacheDefault getInstance(@NotNull Project project) {
-        cacheDao = new CacheDao(project);
-        return INSTANCES.computeIfAbsent(project, k -> new MyBatisCacheDefault());
+        return INSTANCES.computeIfAbsent(project, k -> new MyBatisCacheDefault(project));
     }
 
     /**

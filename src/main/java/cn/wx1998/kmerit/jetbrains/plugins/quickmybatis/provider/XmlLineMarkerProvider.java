@@ -14,6 +14,7 @@ import com.intellij.codeInsight.navigation.impl.PsiTargetPresentationRenderer;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiClass;
@@ -80,20 +81,27 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
         if (!isTheElement(element)) {
             return;
         }
-        myBatisCache = MyBatisCacheFactory.getRecommendedParser(element.getProject());
+        try {
+            myBatisCache = MyBatisCacheFactory.getRecommendedParser(element.getProject());
 
-        // 应用处理逻辑并生成导航标记
-        Optional<? extends PsiElement[]> processResult = apply((XmlToken) element);
-        if (processResult.isPresent()) {
-            PsiElement[] arrays = processResult.get();
-            NavigationGutterIconBuilder<PsiElement> navigationGutterIconBuilder = NavigationGutterIconBuilder.create(getIcon());
-            if (arrays.length > 0) {
+            // 应用处理逻辑并生成导航标记
+            Optional<? extends PsiElement[]> processResult = apply((XmlToken) element);
+            if (processResult.isPresent()) {
+                PsiElement[] arrays = processResult.get();
+                if (arrays.length == 0) {
+                    return;
+                }
+                NavigationGutterIconBuilder<PsiElement> navigationGutterIconBuilder = NavigationGutterIconBuilder.create(getIcon());
                 navigationGutterIconBuilder.setTooltipTitle(getTooltip(arrays[0], element));
+                navigationGutterIconBuilder.setTargets(arrays);
+                navigationGutterIconBuilder.setTargetRenderer(getRender());
+                RelatedItemLineMarkerInfo<PsiElement> lineMarkerInfo = navigationGutterIconBuilder.createLineMarkerInfo(element);
+                result.add(lineMarkerInfo);
             }
-            navigationGutterIconBuilder.setTargets(arrays);
-            navigationGutterIconBuilder.setTargetRenderer(getRender());
-            RelatedItemLineMarkerInfo<PsiElement> lineMarkerInfo = navigationGutterIconBuilder.createLineMarkerInfo(element);
-            result.add(lineMarkerInfo);
+        } catch (ProcessCanceledException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            LOG.debug(LOG_PREFIX + "缓存或 PSI 暂时不可用，跳过 XML 导航标记", e);
         }
     }
 
@@ -224,7 +232,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             List<PsiElement> targetClasses = new ArrayList<>();
             for (JavaElementInfo info : javaElementInfos) {
                 PsiElement javaElement = TagLocator.findJavaTagByInfo(info, project);
-                if (javaElement == null) continue;
+                if (javaElement == null) continue;//todo: 这里写一下缓存失效
                 targetClasses.add(javaElement);
             }
 

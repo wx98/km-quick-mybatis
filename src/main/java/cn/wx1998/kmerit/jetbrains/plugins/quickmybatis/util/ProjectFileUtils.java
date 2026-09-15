@@ -307,8 +307,7 @@ public class ProjectFileUtils {
                     documentManager.commitDocument(document);
                     return true;
                 } catch (Exception e) {
-                    // 捕获 "Must not modify PSI inside save listener" 等异常
-                    e.printStackTrace();
+                    LOG.error(LOG_PREFIX + "异常执行", e);
                     return false;
                 }
             });

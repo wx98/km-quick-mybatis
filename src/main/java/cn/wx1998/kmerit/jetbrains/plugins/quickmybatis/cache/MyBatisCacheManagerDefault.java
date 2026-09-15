@@ -84,6 +84,8 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     // 项目实例
     private final Project project;
+    // VFS 监听连接
+    private MessageBusConnection messageBusConnection;
     // 防止重复扫描的锁
     private final transient Object scanLock = new Object();
     // 缓存版本号，用于增量更新
@@ -114,6 +116,10 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         return instance;
     }
 
+    public static MyBatisCacheManagerDefault getExistingInstance(@NotNull Project project) {
+        return project.getUserData(INSTANCE_KEY);
+    }
+
     /**
      * 初始化：注册文件监听器和定时任务
      */
@@ -129,10 +135,10 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
      * 注册VFS文件变化监听器，文件修改/删除时主动失效缓存
      */
     private void registerFileListener() {
-        MessageBusConnection connection = project.getMessageBus().connect();
+        messageBusConnection = project.getMessageBus().connect();
         // 获取项目文件索引
         ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
-        connection.subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
+        messageBusConnection.subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
             @Override
             public void after(@NotNull List<? extends VFileEvent> events) {
                 for (VFileEvent event : events) {
@@ -253,14 +259,25 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
         ReadAction.run(() -> {
             PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
             if (psiFile == null) return;
-            Project project = psiFile.getProject();
-            if (DumbService.getInstance(project).isDumb()) {
-                // 索引未就绪时，注册回调在索引就绪时执行，不立即执行
-                DumbService.getInstance(project).runWhenSmart(() -> ApplicationManager.getApplication().executeOnPooledThread(() -> doReparseAndCache(file)));
+            Project currentProject = psiFile.getProject();
+            if (DumbService.getInstance(currentProject).isDumb()) {
+                LOG.debug(LOG_PREFIX + "reparseAndCacheFile 索引未就绪，稍后再刷新:" + file.getPath());
+                DumbService.getInstance(currentProject).runWhenSmart(() -> ApplicationManager.getApplication().executeOnPooledThread(() -> doReparseAndCache(file)));
             } else {
                 doReparseAndCache(file);
             }
         });
+    }
+
+    @Override
+    public void dispose() {
+        scheduler.shutdownNow();
+        if (messageBusConnection != null) {
+            messageBusConnection.disconnect();
+            messageBusConnection = null;
+        }
+        project.putUserData(INSTANCE_KEY, null);
+        LOG.debug(LOG_PREFIX + "缓存管理器资源已释放，项目: " + project.getName());
     }
 
     /**
@@ -405,6 +422,9 @@ public class MyBatisCacheManagerDefault implements MyBatisCacheManager {
             LOG.warn(LOG_PREFIX + "索引未就绪，跳过缓存刷新", e);
             // 延迟到索引就绪后重试（可选）
             DumbService.getInstance(project).runWhenSmart(() -> refreshInvalidatedCaches(filePath));
+        } catch (RuntimeException e) {
+            // 数据库关闭、PSI 失效等竞态不应从 VFS 保存回调冒泡到 IDEA。
+            LOG.warn(LOG_PREFIX + "缓存刷新未完成，等待下一次文件变更或扫描: " + filePath, e);
         }
     }
 

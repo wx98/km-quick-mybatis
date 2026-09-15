@@ -293,17 +293,26 @@ public class JavaService implements Serializable {
      * @return true 是，false否
      */
     public boolean isSqlSessionMethod(PsiMethod method) {
+        if (method == null) {
+            return false;
+        }
         PsiClass containingClass = method.getContainingClass();
         if (containingClass == null) {
             return false;
         }
-        if (!method.getModifierList().hasExplicitModifier(PsiModifier.PUBLIC)) {
+        if (method.getModifierList() == null || !method.getModifierList().hasExplicitModifier(PsiModifier.PUBLIC)) {
             return false;
         }
         final var classFilters = MyPluginSettings.getInstance().getClassFilters();
         if (classFilters != null) {
             final var qualifiedName = containingClass.getQualifiedName();
+            if (qualifiedName == null) {
+                return false;
+            }
             for (ClassFilter classFilter : classFilters) {
+                if (classFilter == null) {
+                    continue;
+                }
                 final var pattern = classFilter.getPattern();
                 if (StringUtil.equals(pattern, qualifiedName)) {
                     return true;

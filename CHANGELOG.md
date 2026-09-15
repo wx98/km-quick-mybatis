@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [1.0.3] - 2025-12-20
+
+### Optimized
+
+- 新增监听插件卸载事件，在卸载的时候清理本插件的缓存和配置
+
+### Changed
+
+- 日志规范化调整，本插件所有日志添加 kmQuickMybatis 前缀关键字
+
+### Fixed
+
+- 缓存找不到时，跳转标记添加出现异常的问题
+- 修复 README.md 文件中英文链接跳转的bug
+
 ## [1.0.2] - 2025-12-20
 
 ### Optimized
@@ -48,7 +63,8 @@
 - 初始版本发布，支持 Java 类与 MyBatis XML 文件快速跳转功能
 - 基础的代码与 XML 解析能力，实现核心导航功能
 
-[Unreleased]: https://github.com/wx98/km-quick-mybatis/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/wx98/km-quick-mybatis/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/wx98/km-quick-mybatis/compare/v1.0.3...v1.0.3
 [1.0.2]: https://github.com/wx98/km-quick-mybatis/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/wx98/km-quick-mybatis/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/wx98/km-quick-mybatis/compare/v0.0.1...v1.0.0

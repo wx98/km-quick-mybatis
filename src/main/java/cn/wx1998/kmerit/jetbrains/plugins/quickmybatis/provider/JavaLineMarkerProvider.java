@@ -12,6 +12,7 @@ import com.intellij.codeInsight.navigation.impl.PsiTargetPresentationRenderer;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.markup.GutterIconRenderer;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
@@ -50,10 +51,11 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
 
     @Override
     protected void collectNavigationMarkers(@NotNull PsiElement element, @NotNull Collection<? super RelatedItemLineMarkerInfo<?>> result) {
-        Project project = element.getProject();
-        MyBatisCache cacheConfig = MyBatisCacheFactory.getRecommendedParser(project);
-        JavaService javaService = JavaService.getInstance(project);
-        ElementFilter filter = new ElementFilter() {
+        try {
+            Project project = element.getProject();
+            MyBatisCache cacheConfig = MyBatisCacheFactory.getRecommendedParser(project);
+            JavaService javaService = JavaService.getInstance(project);
+            ElementFilter filter = new ElementFilter() {
             @Override
             protected Collection<? extends XmlTag> getResults(@NotNull PsiElement element) {
                 CommonProcessors.CollectProcessor<XmlTag> processor = new CommonProcessors.CollectProcessor<>();
@@ -93,8 +95,13 @@ public class JavaLineMarkerProvider extends RelatedItemLineMarkerProvider {
                 }
                 return processor.getResults();
             }
-        };
-        filter.collectNavigationMarkers(element, result);
+            };
+            filter.collectNavigationMarkers(element, result);
+        } catch (ProcessCanceledException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            LOG.debug(LOG_PREFIX + "缓存或 PSI 暂时不可用，跳过 Java 导航标记", e);
+        }
     }
 }
 

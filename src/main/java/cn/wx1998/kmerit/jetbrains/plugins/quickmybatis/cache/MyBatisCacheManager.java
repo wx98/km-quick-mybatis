@@ -111,4 +111,10 @@ public interface MyBatisCacheManager {
     boolean isCacheUpToDate(long lastKnownVersion);
 
     boolean checkForCacheInvalidationAndNotify(Project project);
+
+    /**
+     * 释放缓存管理器持有的监听器、线程等运行时资源。
+     */
+    default void dispose() {
+    }
 }

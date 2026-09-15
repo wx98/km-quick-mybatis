@@ -1,4 +1,4 @@
-package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.listeners;
+package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.lifecycle;
 
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.setting.MyPluginSettings;
 import com.intellij.openapi.application.ApplicationActivationListener;

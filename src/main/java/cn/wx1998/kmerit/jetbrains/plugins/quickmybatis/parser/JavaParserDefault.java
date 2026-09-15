@@ -5,6 +5,7 @@ import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheFactory
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.services.JavaService;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiAnnotation;
@@ -251,24 +252,30 @@ public class JavaParserDefault implements JavaParser {
 
                         // 包含方法调用的解析
                         if (includeMethodCalls) {
-                            PsiCodeBlock body = method.getBody();
-                            if (body == null) continue;
-                            Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
-                            for (PsiMethodCallExpression callExpr : childrenOfType) {
-                                JavaService javaService = JavaService.getInstance(body.getProject());
-                                if (!javaService.isSqlSessionMethod(callExpr)) {
-                                    continue;
+                            try {
+                                PsiCodeBlock body = method.getBody();
+                                if (body == null) continue;
+                                Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
+                                for (PsiMethodCallExpression callExpr : childrenOfType) {
+                                    JavaService javaService = JavaService.getInstance(body.getProject());
+                                    if (!javaService.isSqlSessionMethod(callExpr)) {
+                                        continue;
+                                    }
+                                    PsiExpressionList argumentList = callExpr.getArgumentList();
+                                    PsiExpression[] expressions = argumentList.getExpressions();
+                                    if (expressions.length < 1) {
+                                        continue;
+                                    }
+                                    PsiExpression expression = expressions[0];
+                                    String key = JavaService.parseExpression(expression);
+                                    if (key != null && !key.isEmpty()) {
+                                        classMethodCall.computeIfAbsent(key, k -> new ArrayList<>()).add(callExpr);
+                                    }
                                 }
-                                PsiExpressionList argumentList = callExpr.getArgumentList();
-                                PsiExpression[] expressions = argumentList.getExpressions();
-                                if (expressions.length < 1) {
-                                    continue;
-                                }
-                                PsiExpression expression = expressions[0];
-                                String key = JavaService.parseExpression(expression);
-                                if (key != null && !key.isEmpty()) {
-                                    classMethodCall.computeIfAbsent(key, k -> new ArrayList<>()).add(callExpr);
-                                }
+                            } catch (ProcessCanceledException e) {
+                                throw e;
+                            } catch (RuntimeException e) {
+                                LOG.debug(LOG_PREFIX + "方法体索引与 PSI 不一致，跳过方法调用扫描: " + method.getName(), e);
                             }
                         }
                     }
