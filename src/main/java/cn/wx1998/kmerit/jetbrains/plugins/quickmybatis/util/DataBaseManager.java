@@ -22,7 +22,7 @@ import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * IDEA 内置 H2 的连接管理器
+ * H2 的连接管理器
  */
 public class DataBaseManager {
 

@@ -23,7 +23,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class MyBatisXmlParserDefault implements MyBatisXmlParser {
 
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis XML文件解析器]";
+    // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(MyBatisXmlParserDefault.class);
+
     private final Project project;
 
     /**
@@ -33,7 +37,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
      */
     public MyBatisXmlParserDefault(Project project) {
         this.project = project;
-        LOG.debug("为项目初始化默认MyBatis XML解析器: " + project.getName());
+        LOG.debug(LOG_PREFIX + "为项目初始化默认MyBatis XML解析器: " + project.getName());
     }
 
     /**
@@ -43,7 +47,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
      * @return DefaultMyBatisXmlParser 实例
      */
     public static MyBatisXmlParser create(@NotNull Project project) {
-        LOG.debug("创建 DefaultMyBatisXmlParser 实例");
+        LOG.debug(LOG_PREFIX + "创建 DefaultMyBatisXmlParser 实例");
         return new MyBatisXmlParserDefault(project);
     }
 
@@ -57,7 +61,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
     @Override
     public MyBatisParseResult parse(XmlFile file) {
         String path = file.getVirtualFile().getPath();
-        LOG.debug("开始解析MyBatis XML文件: " + path);
+        LOG.debug(LOG_PREFIX + "开始解析MyBatis XML文件: " + path);
 
         // 验证文件有效性
         boolean isValid = isValidMyBatisFile(file);
@@ -76,31 +80,31 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
      */
     @Override
     public boolean isValidMyBatisFile(XmlFile file) {
-        LOG.debug("验证文件是否为有效的MyBatis文件: " + file.getName());
+        LOG.debug(LOG_PREFIX + "验证文件是否为有效的MyBatis文件: " + file.getName());
         // 所有Psi操作包裹在ReadAction.compute中，返回布尔结果
         return ReadAction.compute(() -> {
             // 首先检查根标签是否为 mapper
             XmlDocument document = file.getDocument();
             if (document == null) {
-                LOG.debug("文件没有XML文档结构: " + file.getName());
+                LOG.debug(LOG_PREFIX + "文件没有XML文档结构: " + file.getName());
                 return false;
             }
 
             // 检查根标签是否为mapper
             XmlTag rootTag = document.getRootTag();
             if (rootTag == null || !MyBatisXmlStructure.MAPPER_TAG.equals(rootTag.getName())) {
-                LOG.debug("文件根标签不是mapper: " + (rootTag != null ? rootTag.getName() : "null") + "，文件名: " + file.getName());
+                LOG.debug(LOG_PREFIX + "文件根标签不是mapper: " + (rootTag != null ? rootTag.getName() : "null") + "，文件名: " + file.getName());
                 return false;
             }
 
             // 检查是否有名为namespace的有效属性
             XmlAttribute namespaceAttr = rootTag.getAttribute("namespace");
             if (namespaceAttr == null || namespaceAttr.getValue() == null || namespaceAttr.getValue().trim().isEmpty()) {
-                LOG.debug("Mapper标签缺少有效的namespace属性: " + file.getName());
+                LOG.debug(LOG_PREFIX + "Mapper标签缺少有效的namespace属性: " + file.getName());
                 return false;
             }
 
-            LOG.debug("文件验证为有效的MyBatis文件: " + file.getName() + "，命名空间: " + namespaceAttr.getValue());
+            LOG.debug(LOG_PREFIX + "文件验证为有效的MyBatis文件: " + file.getName() + "，命名空间: " + namespaceAttr.getValue());
             return true;
         });
     }
@@ -111,22 +115,22 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
      * @param file 需要验证的Mapper XML文件
      */
     private void validateMapperStructure(XmlFile file) {
-        LOG.debug("验证Mapper文件结构: " + file.getName());
+        LOG.debug(LOG_PREFIX + "验证Mapper文件结构: " + file.getName());
         ReadAction.run(() -> {
             XmlDocument document = file.getDocument();
             if (document == null) {
-                LOG.debug("文件没有XML文档结构: " + file.getName());
+                LOG.debug(LOG_PREFIX + "文件没有XML文档结构: " + file.getName());
                 return;
             }
             XmlTag rootTag = document.getRootTag();
             if (rootTag == null) {
-                LOG.debug("文件没有根标签: " + file.getName());
+                LOG.debug(LOG_PREFIX + "文件没有根标签: " + file.getName());
                 return;
             }
 
             // 获取所有子标签
             XmlTag[] subTags = rootTag.getSubTags();
-            LOG.debug("文件包含" + subTags.length + "个子标签: " + file.getName());
+            LOG.debug(LOG_PREFIX + "文件包含" + subTags.length + "个子标签: " + file.getName());
 
             // 检查每个子标签是否为 MyBatis 支持的标签
             int statementCount = 0;
@@ -137,7 +141,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
                 String tagName = tag.getName();
 
                 if (!MyBatisXmlStructure.isSupportedTag(tagName)) {
-                    LOG.warn("不支持的MyBatis标签: " + tagName + "，文件名: " + file.getName());
+                    LOG.warn(LOG_PREFIX + "不支持的MyBatis标签: " + tagName + "，文件名: " + file.getName());
                     unsupportedCount++;
                     continue;
                 }
@@ -151,7 +155,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
                 }
             }
 
-            LOG.debug("文件结构验证完成: " + file.getName() + "，语句数量: " + statementCount + "，SQL片段数量: " + sqlFragmentCount + "，不支持标签数量: " + unsupportedCount);
+            LOG.debug(LOG_PREFIX + "文件结构验证完成: " + file.getName() + "，语句数量: " + statementCount + "，SQL片段数量: " + sqlFragmentCount + "，不支持标签数量: " + unsupportedCount);
         });
     }
 
@@ -166,9 +170,9 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
         ReadAction.run(() -> {
             XmlAttribute idAttr = tag.getAttribute("id");
             if (idAttr == null || idAttr.getValue() == null || idAttr.getValue().trim().isEmpty()) {
-                LOG.warn("SQL语句标签缺少id属性: " + tagName + "，文件名: " + tag.getContainingFile().getName());
+                LOG.warn(LOG_PREFIX + "SQL语句标签缺少id属性: " + tagName + "，文件名: " + tag.getContainingFile().getName());
             } else {
-                LOG.debug("验证SQL语句标签: " + tagName + "，id: " + idAttr.getValue() + "，文件名: " + tag.getContainingFile().getName());
+                LOG.debug(LOG_PREFIX + "验证SQL语句标签: " + tagName + "，id: " + idAttr.getValue() + "，文件名: " + tag.getContainingFile().getName());
             }
 
             // 获取该标签支持的所有属性
@@ -178,7 +182,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
             for (XmlAttribute attr : tag.getAttributes()) {
                 String attrName = attr.getName();
                 if (!supportedAttributes.contains(attrName)) {
-                    LOG.warn("不支持的属性: " + attrName + " 用于 " + tagName + "标签，文件名: " + tag.getContainingFile().getName());
+                    LOG.warn(LOG_PREFIX + "不支持的属性: " + attrName + " 用于 " + tagName + "标签，文件名: " + tag.getContainingFile().getName());
                 }
             }
         });
@@ -204,7 +208,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
          * 初始化内部映射集合，同时同步到全局缓存
          */
         private void initializeMaps() {
-            LOG.debug("初始化XML解析结果映射，文件: " + (file != null ? file.getName() : "空文件"));
+            LOG.debug(LOG_PREFIX + "初始化XML解析结果映射，文件: " + (file != null ? file.getName() : "空文件"));
 
             // 直接从 XML 文件解析以避免空指针异常
             if (file != null) {
@@ -216,7 +220,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
          * 直接从XML文件解析内容，同步到本地集合和全局缓存
          */
         private void parseXmlFileDirectly() {
-            LOG.debug("直接从XML文件解析内容: " + file.getName());
+            LOG.debug(LOG_PREFIX + "直接从XML文件解析内容: " + file.getName());
             // 1. 获取XML路径
             String xmlFilePath = file.getVirtualFile().getPath();
             XmlDocument xmlDocument = file.getDocument();
@@ -229,7 +233,7 @@ public class MyBatisXmlParserDefault implements MyBatisXmlParser {
             PsiDocumentManager psiDocManager = PsiDocumentManager.getInstance(project);
             var document = psiDocManager.getDocument(file);
             if (document == null) {
-                LOG.warn("无法获取XML文件的文档对象: " + file.getName());
+                LOG.warn(LOG_PREFIX + "无法获取XML文件的文档对象: " + file.getName());
                 return;
             }
 

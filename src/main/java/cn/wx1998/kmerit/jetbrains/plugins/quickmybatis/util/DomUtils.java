@@ -16,6 +16,9 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class DomUtils {
 
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis Dom工具]";
+    // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(DomUtils.class);
 
     /**
@@ -34,23 +37,23 @@ public final class DomUtils {
      * @return True if it's a MyBatis XML file, false otherwise
      */
     public static boolean isMybatisFile(@Nullable PsiFile file) {
-        LOG.debug("Checking if file is a MyBatis XML file: " + (file != null ? file.getName() : "null"));
+        LOG.debug(LOG_PREFIX + "Checking if file is a MyBatis XML file: " + (file != null ? file.getName() : "null"));
 
         if (!(file instanceof XmlFile)) {
-            LOG.debug("File is null or not an XmlFile");
+            LOG.debug(LOG_PREFIX + "File is null or not an XmlFile");
             return false;
         }
 
         // Basic validation
         XmlTag rootTag = ((XmlFile) file).getRootTag();
         if (rootTag == null || !"mapper".equals(rootTag.getName())) {
-            LOG.debug("File does not have mapper root tag: " + (rootTag != null ? rootTag.getName() : "null"));
+            LOG.debug(LOG_PREFIX + "File does not have mapper root tag: " + (rootTag != null ? rootTag.getName() : "null"));
             return false;
         }
 
         XmlAttribute namespaceAttr = rootTag.getAttribute("namespace");
         if (namespaceAttr == null || namespaceAttr.getValue() == null || namespaceAttr.getValue().trim().isEmpty()) {
-            LOG.debug("Mapper tag missing valid namespace attribute");
+            LOG.debug(LOG_PREFIX + "Mapper tag missing valid namespace attribute");
             return false;
         }
 
@@ -58,13 +61,13 @@ public final class DomUtils {
         try {
             Project project = file.getProject();
             MyBatisXmlParser parser = getMyBatisXmlParser(project);
-            LOG.debug("Using MyBatisXmlParser for enhanced validation");
+            LOG.debug(LOG_PREFIX + "Using MyBatisXmlParser for enhanced validation");
             boolean isValid = parser.isValidMyBatisFile((XmlFile) file);
-            LOG.debug("Enhanced validation result: " + isValid);
+            LOG.debug(LOG_PREFIX + "Enhanced validation result: " + isValid);
             return isValid;
         } catch (Exception e) {
             // If parser validation fails, fallback to basic judgment result
-            LOG.warn("Enhanced validation failed, falling back to basic validation: " + e.getMessage());
+            LOG.warn(LOG_PREFIX + "Enhanced validation failed, falling back to basic validation: " + e.getMessage());
             return true;
         }
     }

@@ -5,6 +5,7 @@ import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheFactory
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.services.JavaService;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiAnnotation;
@@ -35,7 +36,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class JavaParserDefault implements JavaParser {
 
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis Java文件解析器]";
+    // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(JavaParserDefault.class);
+
     private final Project project;
     private final MyBatisCache cacheConfig; // 全局缓存管理器
 
@@ -43,12 +48,12 @@ public class JavaParserDefault implements JavaParser {
     public JavaParserDefault(Project project) {
         this.project = project;
         this.cacheConfig = MyBatisCacheFactory.getRecommendedParser(project);
-        LOG.debug("为项目初始化默认Java解析器: " + project.getName());
+        LOG.debug(LOG_PREFIX + "为项目初始化默认Java解析器: " + project.getName());
     }
 
 
     public static JavaParser create(Project project) {
-        LOG.debug("创建 JavaParserDefault 实例");
+        LOG.debug(LOG_PREFIX + "创建 JavaParserDefault 实例");
         return new JavaParserDefault(project);
     }
 
@@ -56,7 +61,7 @@ public class JavaParserDefault implements JavaParser {
     @Override
     public JavaParseResult parse(PsiJavaFile file) {
         String path = file.getVirtualFile().getPath();
-        LOG.debug("开始解析Java文件: " + path);
+        LOG.debug(LOG_PREFIX + "开始解析Java文件: " + path);
 
         // 验证文件有效性
         boolean isValid = isValidJavaFile(file);
@@ -71,7 +76,7 @@ public class JavaParserDefault implements JavaParser {
     @Override
     public JavaParseResult parseEverything(PsiJavaFile file) {
         String path = file.getVirtualFile().getPath();
-        LOG.debug("开始解析Java文件所有内容: " + path);
+        LOG.debug(LOG_PREFIX + "开始解析Java文件所有内容: " + path);
 
         // 验证文件有效性
         boolean isValid = isValidJavaFile(file);
@@ -87,16 +92,16 @@ public class JavaParserDefault implements JavaParser {
     public boolean isValidJavaFile(PsiJavaFile file) {
         return ReadAction.compute(() -> {
             String fileName = file.getName();
-            LOG.debug("验证Java文件有效性: " + fileName);
+            LOG.debug(LOG_PREFIX + "验证Java文件有效性: " + fileName);
             VirtualFile virtualFile = file.getVirtualFile();
             if (virtualFile == null) {
-                LOG.debug("文件不存在，验证失败: " + fileName);
+                LOG.debug(LOG_PREFIX + "文件不存在，验证失败: " + fileName);
                 return false;
             }
             // 3. 检查是否包含至少一个有效类/接口（非匿名类、非局部类）
             PsiClass[] classes = file.getClasses();
             if (classes.length == 0) {
-                LOG.debug("文件不包含任何类或接口，验证失败: " + fileName);
+                LOG.debug(LOG_PREFIX + "文件不包含任何类或接口，验证失败: " + fileName);
                 return false;
             }
             // 4. 检查公共类名是否与文件名一致（Java规范要求）
@@ -105,7 +110,7 @@ public class JavaParserDefault implements JavaParser {
                     String className = cls.getName();
                     String expectedFileName = className + ".java";
                     if (!fileName.equals(expectedFileName)) {
-                        LOG.debug("公共类名与文件名不一致，验证失败: " + fileName + "，类名: " + className);
+                        LOG.debug(LOG_PREFIX + "公共类名与文件名不一致，验证失败: " + fileName + "，类名: " + className);
                         return false;
                     }
                 }
@@ -113,10 +118,10 @@ public class JavaParserDefault implements JavaParser {
 
             // 5. 可选：排除测试类（如包含@Test注解的类）
             if (isTestClass(file, virtualFile)) {
-                LOG.debug("文件是测试类，验证失败: " + fileName);
+                LOG.debug(LOG_PREFIX + "文件是测试类，验证失败: " + fileName);
                 return false;
             }
-            LOG.debug("文件验证通过（可正常编译）: " + fileName);
+            LOG.debug(LOG_PREFIX + "文件验证通过（可正常编译）: " + fileName);
             return true;
         });
     }
@@ -176,13 +181,13 @@ public class JavaParserDefault implements JavaParser {
      * 验证Java文件结构并同步到缓存
      */
     private void validateJavaStructure(PsiJavaFile file) {
-        LOG.debug("验证Java文件结构: " + file.getName());
+        LOG.debug(LOG_PREFIX + "验证Java文件结构: " + file.getName());
         PsiClass[] classes = file.getClasses();
         for (PsiClass cls : classes) {
             // 同步接口信息到缓存
             if (cls.isInterface()) {
 //                cacheConfig.addMapperInterface(cls.getQualifiedName(), file);
-                LOG.debug("已缓存Mapper接口: " + cls.getQualifiedName());
+                LOG.debug(LOG_PREFIX + "已缓存Mapper接口: " + cls.getQualifiedName());
             }
         }
     }
@@ -225,7 +230,7 @@ public class JavaParserDefault implements JavaParser {
         }
 
         private void initializeMaps() {
-            LOG.debug("初始化Java解析结果映射: " + file.getName());
+            LOG.debug(LOG_PREFIX + "初始化Java解析结果映射: " + file.getName());
             PsiClass[] psiClasses = file.getClasses();
             for (PsiClass cls : psiClasses) {
                 String className = cls.getQualifiedName();
@@ -247,24 +252,30 @@ public class JavaParserDefault implements JavaParser {
 
                         // 包含方法调用的解析
                         if (includeMethodCalls) {
-                            PsiCodeBlock body = method.getBody();
-                            if (body == null) continue;
-                            Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
-                            for (PsiMethodCallExpression callExpr : childrenOfType) {
-                                JavaService javaService = JavaService.getInstance(body.getProject());
-                                if (!javaService.isSqlSessionMethod(callExpr)) {
-                                    continue;
+                            try {
+                                PsiCodeBlock body = method.getBody();
+                                if (body == null) continue;
+                                Collection<PsiMethodCallExpression> childrenOfType = PsiTreeUtil.findChildrenOfType(body, PsiMethodCallExpression.class);
+                                for (PsiMethodCallExpression callExpr : childrenOfType) {
+                                    JavaService javaService = JavaService.getInstance(body.getProject());
+                                    if (!javaService.isSqlSessionMethod(callExpr)) {
+                                        continue;
+                                    }
+                                    PsiExpressionList argumentList = callExpr.getArgumentList();
+                                    PsiExpression[] expressions = argumentList.getExpressions();
+                                    if (expressions.length < 1) {
+                                        continue;
+                                    }
+                                    PsiExpression expression = expressions[0];
+                                    String key = JavaService.parseExpression(expression);
+                                    if (key != null && !key.isEmpty()) {
+                                        classMethodCall.computeIfAbsent(key, k -> new ArrayList<>()).add(callExpr);
+                                    }
                                 }
-                                PsiExpressionList argumentList = callExpr.getArgumentList();
-                                PsiExpression[] expressions = argumentList.getExpressions();
-                                if (expressions.length < 1) {
-                                    continue;
-                                }
-                                PsiExpression expression = expressions[0];
-                                String key = JavaService.parseExpression(expression);
-                                if (key != null && !key.isEmpty()) {
-                                    classMethodCall.computeIfAbsent(key, k -> new ArrayList<>()).add(callExpr);
-                                }
+                            } catch (ProcessCanceledException e) {
+                                throw e;
+                            } catch (RuntimeException e) {
+                                LOG.debug(LOG_PREFIX + "方法体索引与 PSI 不一致，跳过方法调用扫描: " + method.getName(), e);
                             }
                         }
                     }
