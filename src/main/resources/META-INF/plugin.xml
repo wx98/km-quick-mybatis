@@ -90,6 +90,10 @@
     </actions>
     <!-- 扩展点 -->
     <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Km Quick Mybatis"
+                    anchor="right"
+                    factoryClass="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.toolwindow.MyBatisCacheToolWindowFactory"
+                    icon="/images/icon.png"/>
         <!-- Java 服务 -->
         <projectService
                 id="cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.services.JavaService"

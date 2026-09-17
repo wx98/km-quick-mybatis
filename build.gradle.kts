@@ -63,6 +63,7 @@ dependencies {
 
     implementation(libs.h2)
     implementation(libs.dbutils)
+    implementation(libs.commonsCollections)
     implementation(libs.hikaricp) {
         exclude(module = "slf4j-api")
     }

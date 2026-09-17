@@ -4,6 +4,7 @@ junit = "4.13.2"
 lombok = "1.18.48"
 h2 = "2.5.250"
 dbutils = "1.8.1"
+commonsCollections = "3.2.2"
 hikaricp = "7.1.0"
 
 # plugins
@@ -18,6 +19,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 lombok = { group = "org.projectlombok", name = "lombok", version.ref = "lombok" }
 h2 = { group = "com.h2database", name = "h2", version.ref = "h2" }
 dbutils = { group = "commons-dbutils", name = "commons-dbutils", version.ref = "dbutils" }
+commonsCollections = { group = "commons-collections", name = "commons-collections", version.ref = "commonsCollections" }
 hikaricp = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikaricp" }
 
 [plugins]
