@@ -14,6 +14,7 @@ import com.intellij.codeInsight.navigation.impl.PsiTargetPresentationRenderer;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiClass;
@@ -58,6 +59,9 @@ import static cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.util.Icons.IMAGES_
  */
 public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
 
+    // 日志前缀
+    private static final String LOG_PREFIX = "[kmQuickMybatis Xml文件标记器]";
+    // 获取日志记录器实例
     private static final Logger LOG = Logger.getInstance(XmlLineMarkerProvider.class);
 
     /**
@@ -77,20 +81,27 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
         if (!isTheElement(element)) {
             return;
         }
-        myBatisCache = MyBatisCacheFactory.getRecommendedParser(element.getProject());
+        try {
+            myBatisCache = MyBatisCacheFactory.getRecommendedParser(element.getProject());
 
-        // 应用处理逻辑并生成导航标记
-        Optional<? extends PsiElement[]> processResult = apply((XmlToken) element);
-        if (processResult.isPresent()) {
-            PsiElement[] arrays = processResult.get();
-            NavigationGutterIconBuilder<PsiElement> navigationGutterIconBuilder = NavigationGutterIconBuilder.create(getIcon());
-            if (arrays.length > 0) {
+            // 应用处理逻辑并生成导航标记
+            Optional<? extends PsiElement[]> processResult = apply((XmlToken) element);
+            if (processResult.isPresent()) {
+                PsiElement[] arrays = processResult.get();
+                if (arrays.length == 0) {
+                    return;
+                }
+                NavigationGutterIconBuilder<PsiElement> navigationGutterIconBuilder = NavigationGutterIconBuilder.create(getIcon());
                 navigationGutterIconBuilder.setTooltipTitle(getTooltip(arrays[0], element));
+                navigationGutterIconBuilder.setTargets(arrays);
+                navigationGutterIconBuilder.setTargetRenderer(getRender());
+                RelatedItemLineMarkerInfo<PsiElement> lineMarkerInfo = navigationGutterIconBuilder.createLineMarkerInfo(element);
+                result.add(lineMarkerInfo);
             }
-            navigationGutterIconBuilder.setTargets(arrays);
-            navigationGutterIconBuilder.setTargetRenderer(getRender());
-            RelatedItemLineMarkerInfo<PsiElement> lineMarkerInfo = navigationGutterIconBuilder.createLineMarkerInfo(element);
-            result.add(lineMarkerInfo);
+        } catch (ProcessCanceledException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            LOG.debug(LOG_PREFIX + "缓存或 PSI 暂时不可用，跳过 XML 导航标记", e);
         }
     }
 
@@ -162,7 +173,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
      * @return 如果元素是目标 MyBatis XML 元素，则为 true；否则为 false
      */
     public boolean isTheElement(@NotNull PsiElement element) {
-        LOG.debug("Checking if element is target type: " + element.getClass().getSimpleName());
+        LOG.debug(LOG_PREFIX + "Checking if element is target type: " + element.getClass().getSimpleName());
         boolean flag1 = element instanceof XmlToken;
         boolean flag2 = false;
         if (element instanceof XmlToken xmlToken) {
@@ -180,12 +191,12 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
      * @return 如果找到，则包含 PsiElements（Java 方法或类）数组的 Optional；否则为空 Optional
      */
     public Optional<? extends PsiElement[]> apply(@NotNull XmlToken from) {
-        LOG.debug("Applying XmlLineMarkerProvider for element: " + from.getText());
+        LOG.debug(LOG_PREFIX + "Applying XmlLineMarkerProvider for element: " + from.getText());
 
         // 1. 校验包含文件是否为XML文件
         PsiElement containingFile = from.getContainingFile();
         if (!(containingFile instanceof XmlFile xmlFile)) {
-            LOG.debug("Containing file is not an XmlFile");
+            LOG.debug(LOG_PREFIX + "Containing file is not an XmlFile");
             return Optional.empty();
         }
 
@@ -195,7 +206,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             parent = parent.getParent();
         }
         if (parent == null) {
-            LOG.debug("Could not find parent XmlTag for element: " + from.getText());
+            LOG.debug(LOG_PREFIX + "Could not find parent XmlTag for element: " + from.getText());
             return Optional.empty();
         }
         XmlTag currentTag = (XmlTag) parent;
@@ -206,14 +217,14 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
         if (MAPPER_TAG.equalsIgnoreCase(tagName)) {
             String namespace = currentTag.getAttributeValue("namespace");
             if (StringUtil.isEmpty(namespace)) {
-                LOG.debug("Mapper tag missing namespace attribute");
+                LOG.debug(LOG_PREFIX + "Mapper tag missing namespace attribute");
                 return Optional.empty();
             }
 
             // 从缓存获取namespace对应的Java元素信息
             Set<JavaElementInfo> javaElementInfos = myBatisCache.getSqlIdToJavaElements().get(namespace);
             if (javaElementInfos == null || javaElementInfos.isEmpty()) {
-                LOG.debug("No JavaElementInfo found for namespace: " + namespace);
+                LOG.debug(LOG_PREFIX + "No JavaElementInfo found for namespace: " + namespace);
                 return Optional.empty();
             }
 
@@ -221,6 +232,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             List<PsiElement> targetClasses = new ArrayList<>();
             for (JavaElementInfo info : javaElementInfos) {
                 PsiElement javaElement = TagLocator.findJavaTagByInfo(info, project);
+                if (javaElement == null) continue;//todo: 这里写一下缓存失效
                 targetClasses.add(javaElement);
             }
 
@@ -232,19 +244,19 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
         else if (isStatementTag(tagName)) {
             String id = currentTag.getAttributeValue("id");
             if (StringUtil.isEmpty(id)) {
-                LOG.debug("Statement tag missing id attribute");
+                LOG.debug(LOG_PREFIX + "Statement tag missing id attribute");
                 return Optional.empty();
             }
 
             // 获取根mapper标签的namespace，拼接完整SQL ID
             XmlTag rootTag = xmlFile.getDocument() != null ? xmlFile.getDocument().getRootTag() : null;
             if (rootTag == null) {
-                LOG.debug("Could not find root mapper tag in XML file");
+                LOG.debug(LOG_PREFIX + "Could not find root mapper tag in XML file");
                 return Optional.empty();
             }
             String namespace = rootTag.getAttributeValue("namespace");
             if (StringUtil.isEmpty(namespace)) {
-                LOG.debug("Root mapper tag missing namespace attribute");
+                LOG.debug(LOG_PREFIX + "Root mapper tag missing namespace attribute");
                 return Optional.empty();
             }
             String fullSqlId = namespace + "." + id;
@@ -252,7 +264,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             // 从缓存获取SQL ID对应的Java元素信息
             Set<JavaElementInfo> javaElementInfos = myBatisCache.getJavaElementsBySqlId(fullSqlId);
             if (javaElementInfos.isEmpty()) {
-                LOG.debug("No JavaElementInfo found for sqlId: " + fullSqlId);
+                LOG.debug(LOG_PREFIX + "No JavaElementInfo found for sqlId: " + fullSqlId);
                 return Optional.empty();
             }
 
@@ -260,6 +272,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             List<PsiElement> targetMethods = new ArrayList<>();
             for (JavaElementInfo info : javaElementInfos) {
                 PsiElement javaElement = TagLocator.findJavaTagByInfo(info, project);
+                if (javaElement == null) continue;
                 targetMethods.add(javaElement);
             }
 
@@ -268,7 +281,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
         }
 
         // 5. 非目标标签类型，返回空
-        LOG.debug("Element is not a target tag type (mapper/select/insert/update/delete): " + tagName);
+        LOG.debug(LOG_PREFIX + "Element is not a target tag type (mapper/select/insert/update/delete): " + tagName);
         return Optional.empty();
     }
 
@@ -289,7 +302,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
      * @return 如果 token 表示目标 MyBatis XML 元素，则为 true；否则为 false
      */
     private boolean isTargetType(@NotNull XmlToken token) {
-        LOG.debug("Checking target type for token: " + token.getText());
+        LOG.debug(LOG_PREFIX + "Checking target type for token: " + token.getText());
         Boolean targetType = null;
         String tokenText = token.getText();
 
@@ -323,7 +336,7 @@ public class XmlLineMarkerProvider extends RelatedItemLineMarkerProvider {
             targetType = false; // 如果未匹配到任何条件，则不是目标类型
         }
 
-        LOG.debug("Target type check result: " + targetType + " for token: " + tokenText);
+        LOG.debug(LOG_PREFIX + "Target type check result: " + targetType + " for token: " + tokenText);
         return targetType; // 返回最终的目标类型判断结果
     }
 

@@ -6,18 +6,18 @@ updates:
   # Maintain dependencies for Gradle dependencies
   - package-ecosystem: "gradle"
     directory: "/"
-    target-branch: "dependabot"
+    target-branch: "dependabot-updates"
     schedule:
-      interval: "daily"
+      interval: "weekly"
       day: "monday"
       time: "09:00"
       timezone: "Asia/Shanghai"
   # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "dependabot"
+    target-branch: "dependabot-updates"
     schedule:
-      interval: "daily"
+      interval: "weekly"
       day: "monday"
       time: "09:00"
       timezone: "Asia/Shanghai"

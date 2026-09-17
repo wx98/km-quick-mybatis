@@ -1,4 +1,4 @@
-package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.persistent;
+package cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.lifecycle;
 
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheManager;
 import cn.wx1998.kmerit.jetbrains.plugins.quickmybatis.cache.MyBatisCacheManagerFactory;
@@ -9,7 +9,7 @@ import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class MyBatisCacheStartupLoader implements ProjectActivity {
+public class MyBatisStartupLoader implements ProjectActivity {
 
     private long lastKnownVersion = 0;
 

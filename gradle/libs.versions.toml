@@ -1,23 +1,25 @@
 [versions]
 # libraries
 junit = "4.13.2"
-lombok = "1.18.34"
-h2 = "2.2.224"
+lombok = "1.18.48"
+h2 = "2.5.250"
 dbutils = "1.8.1"
-hikaricp = "5.0.1"
+commonsCollections = "3.2.2"
+hikaricp = "7.1.0"
 
 # plugins
 changelog = "2.5.0"
-intelliJPlatform = "2.10.5"
-kotlin = "2.3.0"
-kover = "0.9.4"
-qodana = "2025.2.4"
+intelliJPlatform = "2.19.0"
+kotlin = "2.4.20"
+kover = "0.9.9"
+qodana = "2026.2.1"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 lombok = { group = "org.projectlombok", name = "lombok", version.ref = "lombok" }
 h2 = { group = "com.h2database", name = "h2", version.ref = "h2" }
 dbutils = { group = "commons-dbutils", name = "commons-dbutils", version.ref = "dbutils" }
+commonsCollections = { group = "commons-collections", name = "commons-collections", version.ref = "commonsCollections" }
 hikaricp = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikaricp" }
 
 [plugins]

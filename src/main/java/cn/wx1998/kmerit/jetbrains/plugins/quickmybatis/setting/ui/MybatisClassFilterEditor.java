@@ -12,6 +12,7 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.ActionCallback;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.JavaPsiFacade;
@@ -93,6 +94,7 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
         public void actionPerformed(@NotNull AnActionEvent e) {
 
             Project project = myProject;
+            if (project == null) return;
 
             GlobalSearchScope searchScope = GlobalSearchScope.allScope(project);
             PsiClass throwableClass = getThrowableClass(project);
@@ -118,9 +120,15 @@ public class MybatisClassFilterEditor extends ClassFilterEditor {
                 int row = myTableModel.getRowCount() - 1;
                 myTable.getSelectionModel().setSelectionInterval(row, row);
                 myTable.scrollRectToVisible(myTable.getCellRect(row, 0, true));
-                IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(
-                        () -> IdeFocusManager.getGlobalInstance().requestFocus(myTable, true)
-                );
+
+                // 使用 requestFocus 异步回调
+                IdeFocusManager focusManager = IdeFocusManager.getGlobalInstance();
+                // 异步请求表格获取焦点，返回 ActionCallback
+                ActionCallback focusCallback = focusManager.requestFocus(myTable, true);
+                // 焦点请求成功后执行（可选，确保焦点稳定）
+                focusCallback.doWhenDone(() -> {
+                    IdeFocusManager.getGlobalInstance().requestFocus(myTable, true);
+                });
             }
         }
 

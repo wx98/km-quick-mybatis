@@ -24,13 +24,13 @@
 
 ## 安装方法
 ### 使用 JetBrains 插件市场：
-  <a href="https://plugins.jetbrains.com/plugin/29383-km-quick-mybatis" target="_blank"> <img src="./.github/readme/install-button-cn.png" height="52" alt="从JetBrains插件市场获取" title="从JetBrains插件市场获取"> </a>
+  <a href="https://plugins.jetbrains.com/plugin/29383-km-quick-mybatis" target="_blank"><img src="./.github/readme/install-button-cn.png" height="52" alt="从JetBrains插件市场获取" title="从JetBrains插件市场获取"> </a>
   
 - 访问 [JetBrains 插件市场](https://plugins.jetbrains.com/plugin/29383-km-quick-mybatis)，如果您的IDE正在运行，点击 <kbd>Install to ...</kbd> 按钮即可进行安装。
 
 ### 使用 IDE 内置插件系统：
 - <kbd>设置/偏好设置</kbd> → <kbd>插件</kbd> → <kbd>Marketplace</kbd> → <kbd>搜索"km-quick-mybatis"</kbd> → <kbd>安装</kbd>  
-  <img src="./.github/readme/install-plugins-in-ide-cn.png" height="500">      
+  <img src="./.github/readme/install-plugins-in-ide-cn.png" height="500">
 
 ### 从 JetBrains 插件市场下载安装：
 - 您也可以从 JetBrains 插件市场下载 [最新版本](https://plugins.jetbrains.com/plugin/29383-km-quick-mybatis/versions)
@@ -73,7 +73,7 @@
 [gh:last-commit]: https://github.com/wx98/km-quick-mybatis/commits/main
 [gh:last-issues]: https://github.com/wx98/km-quick-mybatis/issues
 
-[get-started-en]: https://github.com/wx98/km-quick-mybatis/blob/main/README.md
-[get-started-zh]: https://github.com/wx98/km-quick-mybatis/blob/main/README_zh.md
+[get-started-en]: https://github.com/wx98/km-quick-mybatis/blob/main/README_en.md
+[get-started-zh]: https://github.com/wx98/km-quick-mybatis/blob/main/README.md
 
 [template]: https://github.com/JetBrains/intellij-platform-plugin-template

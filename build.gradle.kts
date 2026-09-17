@@ -1,6 +1,4 @@
-import org.gradle.kotlin.dsl.assign
 import org.jetbrains.changelog.Changelog
-import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.models.ProductRelease
@@ -65,6 +63,7 @@ dependencies {
 
     implementation(libs.h2)
     implementation(libs.dbutils)
+    implementation(libs.commonsCollections)
     implementation(libs.hikaricp) {
         exclude(module = "slf4j-api")
     }
@@ -116,9 +115,7 @@ intellijPlatform {
         changeNotes = providers.gradleProperty("pluginVersion").map { pluginVersion ->
             with(changelog) {
                 renderItem(
-                    (getOrNull(pluginVersion) ?: getUnreleased())
-                        .withHeader(false)
-                        .withEmptySections(false),
+                    (getOrNull(pluginVersion) ?: getUnreleased()).withHeader(false).withEmptySections(false),
                     Changelog.OutputType.HTML,
                 )
             }
